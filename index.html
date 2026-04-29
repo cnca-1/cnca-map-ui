@@ -71,69 +71,46 @@
     window.addEventListener("resize", resize);
     resize();
 
-    // SIMPLE SAFE LAYOUT (always works even without edges)
+    // simple layout
     function autoLayout(nodes, edges) {
-      const result = [];
-
-      nodes.forEach((n, i) => {
-console.log("NODE SAMPLE:", n);
-        result.push({
-          ...n,
-          x: (i % 10) * 180,
-          y: Math.floor(i / 10) * 120,
-          width: 160,
-          height: 50
-        });
-      });
-
-      return result;
+      return nodes.map((n, i) => ({
+        ...n,
+        x: (i % 10) * 180,
+        y: Math.floor(i / 10) * 120,
+        width: 160,
+        height: 50
+      }));
     }
 
-window.addEventListener("message", (event) => {
-  console.log("📩 RAW MESSAGE:", event.data);
+    window.addEventListener("message", (event) => {
+      let payload = event.data;
 
-  let payload = event.data;
+      if (typeof payload === "string") {
+        try {
+          payload = JSON.parse(payload);
+        } catch {
+          return;
+        }
+      }
 
-  // unwrap Bubble string
-  if (typeof payload === "string") {
-    try {
-      payload = JSON.parse(payload);
-    } catch (e) {
-      console.log("❌ Outer JSON parse failed");
-      return;
-    }
-  }
+      let graph = payload.graph;
 
-  console.log("📦 AFTER OUTER PARSE:", payload);
+      if (Array.isArray(graph)) {
+        try {
+          graph = JSON.parse(graph[0]);
+        } catch {
+          return;
+        }
+      }
 
-  // HANDLE YOUR BROKEN SHAPE
-  let graph = payload.graph;
+      if (!graph || !graph.nodes) return;
 
-  // 🔥 FIX: graph is an array with string inside
-  if (Array.isArray(graph)) {
-    try {
-      graph = JSON.parse(graph[0]);
-    } catch (e) {
-      console.log("❌ Inner graph parse failed");
-      return;
-    }
-  }
+      edges = graph.edges || [];
+      nodes = autoLayout(graph.nodes, edges);
 
-  console.log("🧠 FINAL GRAPH:", graph);
-
-  if (!graph || !graph.nodes) {
-    console.log("❌ No valid graph.nodes");
-    return;
-  }
-
-  edges = graph.edges || [];
-  nodes = autoLayout(graph.nodes, edges);
-
-  console.log("✅ NODES LOADED:", nodes.length);
-
-  document.getElementById("loading").style.display = "none";
-  draw();
-});
+      document.getElementById("loading").style.display = "none";
+      draw();
+    });
 
     function screenToWorld(x, y) {
       return {
@@ -150,6 +127,20 @@ window.addEventListener("message", (event) => {
         w.x <= n.x + n.width &&
         w.y >= n.y &&
         w.y <= n.y + n.height
+      );
+    }
+
+    function getLabel(n) {
+      const d = n.data || {};
+
+      return (
+        d.name ||                 // ✅ Bubble user-edited name (BEST)
+        d.element_name ||         // fallback
+        d.elementName ||
+        d.custom_name ||
+        d.default_name ||
+        d.label ||
+        n.id
       );
     }
 
@@ -191,18 +182,13 @@ window.addEventListener("message", (event) => {
 
         ctx.fillStyle = "#f8fafc";
         ctx.font = "11px monospace";
-        const displayLabel =
-  n.data?.element_name ||
-  n.data?.elementLabel ||
-  n.data?.custom_name ||
-  n.data?.label ||
-  n.id;
 
-ctx.fillText(displayLabel, n.x + 10, n.y + 28);
+        const label = getLabel(n);
+
+        ctx.fillText(label, n.x + 10, n.y + 28);
       });
 
       ctx.restore();
-
       drawMiniMap();
     }
 
@@ -249,10 +235,8 @@ ctx.fillText(displayLabel, n.x + 10, n.y + 28);
     canvas.addEventListener("mousemove", (e) => {
       if (draggingNode) {
         const w = screenToWorld(e.clientX, e.clientY);
-
         draggingNode.x = w.x - dragOffsetX;
         draggingNode.y = w.y - dragOffsetY;
-
         draw();
       }
 
@@ -261,7 +245,6 @@ ctx.fillText(displayLabel, n.x + 10, n.y + 28);
         offsetY += e.clientY - lastMouse.y;
 
         lastMouse = { x: e.clientX, y: e.clientY };
-
         draw();
       }
     });
@@ -295,28 +278,11 @@ ctx.fillText(displayLabel, n.x + 10, n.y + 28);
 
       document.getElementById("panel").innerHTML = `
         <div style="font-weight:bold;margin-bottom:8px;">${node.id}</div>
-        <div style="opacity:0.8;margin-bottom:8px;">${node.data?.label || ""}</div>
+        <div style="opacity:0.8;margin-bottom:8px;">${getLabel(node)}</div>
         <pre style="white-space:pre-wrap;color:#94a3b8">
 ${JSON.stringify(node, null, 2)}
         </pre>
       `;
-    });
-
-    window.addEventListener("keydown", (e) => {
-      if (e.key !== "/") return;
-
-      const term = prompt("Search node:");
-      if (!term) return;
-
-      const match = nodes.find(n =>
-        (n.data?.label || "").toLowerCase().includes(term.toLowerCase())
-      );
-
-      if (match) {
-        offsetX = -match.x * scale + window.innerWidth / 2;
-        offsetY = -match.y * scale + window.innerHeight / 2;
-        draw();
-      }
     });
 
     draw();
