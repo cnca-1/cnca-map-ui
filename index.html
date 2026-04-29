@@ -88,29 +88,40 @@
       return result;
     }
 
-   window.addEventListener("message", (event) => {
+window.addEventListener("message", (event) => {
   console.log("📩 RAW MESSAGE:", event.data);
 
   let payload = event.data;
 
-  // handle Bubble stringified JSON
+  // unwrap Bubble string
   if (typeof payload === "string") {
     try {
       payload = JSON.parse(payload);
     } catch (e) {
-      console.log("❌ JSON parse failed");
+      console.log("❌ Outer JSON parse failed");
       return;
     }
   }
 
-  console.log("📦 PARSED PAYLOAD:", payload);
+  console.log("📦 AFTER OUTER PARSE:", payload);
 
-  if (!payload) return;
+  // HANDLE YOUR BROKEN SHAPE
+  let graph = payload.graph;
 
-  const graph = payload.graph;
+  // 🔥 FIX: graph is an array with string inside
+  if (Array.isArray(graph)) {
+    try {
+      graph = JSON.parse(graph[0]);
+    } catch (e) {
+      console.log("❌ Inner graph parse failed");
+      return;
+    }
+  }
+
+  console.log("🧠 FINAL GRAPH:", graph);
 
   if (!graph || !graph.nodes) {
-    console.log("❌ No graph or nodes found");
+    console.log("❌ No valid graph.nodes");
     return;
   }
 
