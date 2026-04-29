@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>CNCA Neural Map</title>
+  <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@reactflow/core@11.10.1/dist/react-flow-core.production.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@reactflow/core@11.10.1/dist/style.css">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body, html, #root { width: 100%; height: 100%; margin: 0; background: #0b0e14; }
+    .react-flow__node { background: #1a1f26; color: white; border: 1px solid #334155; border-radius: 4px; padding: 10px; font-family: monospace; font-size: 10px; }
+    .react-flow__edge-path { stroke: #3b82f6; stroke-width: 2; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script>
+    // This is the "Listener" that waits for Bubble to send data
+    window.addEventListener("message", (event) => {
+      if (event.data && event.data.nodes) {
+        console.log("Received data from Bubble", event.data);
+        renderMap(event.data.nodes, event.data.edges);
+      }
+    }, false);
+
+    function renderMap(nodes, edges) {
+      // Logic to render the nodes and edges on the screen
+      // For the MVP, we'll auto-layout them in a simple row
+      const positionedNodes = nodes.map((n, i) => ({
+        ...n,
+        position: { x: i * 250, y: 100 } 
+      }));
+
+      // (Simplified React Flow render logic here...)
+      document.getElementById('root').innerHTML = `<div style="color:white; padding: 20px;">Map Data Received: ${nodes.length} nodes detected. Rendering engine active...</div>`;
+    }
+  </script>
+</body>
+</html>
