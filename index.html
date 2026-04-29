@@ -1,78 +1,118 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>CNCA Neural Map</title>
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    
-    <script src="https://cdn.jsdelivr.net/npm/@reactflow/core@11.10.1/dist/react-flow-core.production.min.js"></script>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@reactflow/core@11.10.1/dist/style.css">
-    
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        body, html, #root { width: 100%; height: 100%; margin: 0; background: #0b0e14; overflow: hidden; }
-        .react-flow__node { 
-            background: #1e293b; color: #f8fafc; border: 1px solid #334155; 
-            border-radius: 8px; padding: 12px; font-family: ui-monospace, monospace; 
-            font-size: 11px; width: 180px; text-align: center; 
-        }
-        .react-flow__edge-path { stroke: #3b82f6; stroke-width: 2; }
-        .react-flow__attribution { display: none; }
-    </style>
+  <title>CNCA Neural Map</title>
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <style>
+    html, body, #root {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      background: #0b0e14;
+      overflow: hidden;
+      font-family: ui-monospace, monospace;
+    }
+
+    .react-flow__node {
+      background: #1e293b;
+      color: #f8fafc;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 11px;
+      width: 180px;
+      text-align: center;
+    }
+
+    .react-flow__edge-path {
+      stroke: #3b82f6;
+      stroke-width: 2;
+    }
+
+    .react-flow__attribution {
+      display: none;
+    }
+  </style>
 </head>
+
 <body>
-    <div id="root"></div>
-    <script>
-        window.onload = function() {
-            const { useState, useEffect, createElement } = React;
-            
-            // We are looking for the 'ReactFlow' object in the browser's global memory
-            const Flow = window.ReactFlow || window.ReactFlowCore;
+  <div id="root"></div>
 
-            if (!Flow) {
-                document.getElementById('root').innerHTML = '<div style="color:white; padding:20px; font-family:monospace;">System Error: ReactFlow core not initialized. <br/> Retrying in 2 seconds...</div>';
-                setTimeout(() => location.reload(), 2000);
-                return;
+  <script type="module">
+    import React, { useState, useEffect } from "https://esm.sh/react@18";
+    import { createRoot } from "https://esm.sh/react-dom@18/client";
+    import ReactFlow, {
+      ReactFlowProvider,
+      Background,
+      Controls,
+      MiniMap
+    } from "https://esm.sh/reactflow@11.10.1";
+
+    import "https://esm.sh/reactflow@11.10.1/dist/style.css";
+
+    function App() {
+      const [nodes, setNodes] = useState([]);
+      const [edges, setEdges] = useState([]);
+
+      useEffect(() => {
+        const handleMessage = (event) => {
+          const data = event.data;
+
+          if (!data || !Array.isArray(data.nodes)) return;
+
+          const laidOutNodes = data.nodes.map((node, i) => ({
+            ...node,
+            position: node.position || {
+              x: (i % 8) * 220,
+              y: Math.floor(i / 8) * 140
             }
+          }));
 
-            function App() {
-                const [nodes, setNodes] = useState([]);
-                const [edges, setEdges] = useState([]);
-
-                useEffect(() => {
-                    const handleMessage = (event) => {
-                        if (event.data && event.data.nodes) {
-                            // Layout logic: 189 nodes need space!
-                            const laidOutNodes = event.data.nodes.map((node, i) => ({
-                                ...node,
-                                position: { x: (i % 8) * 280, y: Math.floor(i / 8) * 180 }
-                            }));
-                            setNodes(laidOutNodes);
-                            setEdges(event.data.edges || []);
-                        }
-                    };
-                    window.addEventListener("message", handleMessage);
-                    return () => window.removeEventListener("message", handleMessage);
-                }, []);
-
-                if (nodes.length === 0) {
-                    return createElement('div', { 
-                        style: { color: '#475569', display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontFamily: 'monospace' } 
-                    }, "Awaiting Neural Data...");
-                }
-
-                // Call the ReactFlow component directly from the library
-                return createElement(Flow.ReactFlow || Flow, {
-                    nodes: nodes,
-                    edges: edges,
-                    fitView: true,
-                    colorMode: 'dark'
-                });
-            }
-
-            const root = ReactDOM.createRoot(document.getElementById('root'));
-            root.render(createElement(App));
+          setNodes(laidOutNodes);
+          setEdges(data.edges || []);
         };
-    </script>
+
+        window.addEventListener("message", handleMessage);
+        return () => window.removeEventListener("message", handleMessage);
+      }, []);
+
+      if (!nodes.length) {
+        return (
+          <div style={{
+            color: "#475569",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            height: "100vh"
+          }}>
+            Awaiting Neural Data...
+          </div>
+        );
+      }
+
+      return (
+        <ReactFlowProvider>
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            fitView
+            panOnScroll
+            zoomOnScroll
+            nodesDraggable
+            elementsSelectable
+          >
+            <Background />
+            <Controls />
+            <MiniMap />
+          </ReactFlow>
+        </ReactFlowProvider>
+      );
+    }
+
+    const root = createRoot(document.getElementById("root"));
+    root.render(<App />);
+  </script>
 </body>
 </html>
