@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>CNCA Neural Map (Canvas Edition)</title>
+  <title>CNCA Neural Map (Canvas Engine)</title>
 
   <style>
     html, body {
@@ -16,19 +16,33 @@
       display: block;
     }
 
+    #panel {
+      position: absolute;
+      right: 0;
+      top: 0;
+      width: 260px;
+      height: 100%;
+      background: #0f172a;
+      color: white;
+      padding: 12px;
+      font-size: 12px;
+      overflow: auto;
+      border-left: 1px solid #1e293b;
+    }
+
     #loading {
       position: absolute;
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
       color: #475569;
-      font-size: 14px;
     }
   </style>
 </head>
 
 <body>
   <div id="loading">Awaiting Neural Data...</div>
+  <div id="panel">No node selected</div>
   <canvas id="canvas"></canvas>
 
   <script>
@@ -38,7 +52,6 @@
     let nodes = [];
     let edges = [];
 
-    // camera state (pan + zoom)
     let offsetX = 0;
     let offsetY = 0;
     let scale = 1;
@@ -55,41 +68,90 @@
       canvas.height = window.innerHeight;
       draw();
     }
-
     window.addEventListener("resize", resize);
     resize();
 
     // ---------------------------
-    // RECEIVE DATA FROM BUBBLE
+    // AUTO LAYOUT (FIX SQUISHING)
+    // ---------------------------
+    function autoLayout(nodes, edges) {
+      const nodeMap = new Map(nodes.map(n => [n.id, n]));
+
+      const children = new Map();
+      const parents = new Map();
+
+      nodes.forEach(n => {
+        children.set(n.id, []);
+        parents.set(n.id, 0);
+      });
+
+      edges.forEach(e => {
+        children.get(e.source)?.push(e.target);
+        parents.set(e.target, (parents.get(e.target) || 0) + 1);
+      });
+
+      const levels = [];
+      const visited = new Set();
+
+      function place(id, level) {
+        if (!levels[level]) levels[level] = [];
+        levels[level].push(id);
+      }
+
+      function dfs(id, level) {
+        if (visited.has(id)) return;
+        visited.add(id);
+
+        place(id, level);
+
+        (children.get(id) || []).forEach(child => dfs(child, level + 1));
+      }
+
+      nodes
+        .filter(n => parents.get(n.id) === 0)
+        .forEach(n => dfs(n.id, 0));
+
+      nodes.forEach(n => {
+        if (!visited.has(n.id)) place(n.id, 0);
+      });
+
+      const result = [];
+
+      levels.forEach((col, x) => {
+        col.forEach((id, y) => {
+          const node = nodeMap.get(id);
+          if (!node) return;
+
+          result.push({
+            ...node,
+            x: x * 280,
+            y: y * 140,
+            width: 160,
+            height: 50
+          });
+        });
+      });
+
+      return result;
+    }
+
+    // ---------------------------
+    // RECEIVE DATA
     // ---------------------------
     window.addEventListener("message", (event) => {
       const data = event.data;
       if (!data?.nodes) return;
 
-      nodes = data.nodes.map((n, i) => ({
-        ...n,
-        x: n.position?.x ?? (i % 8) * 200,
-        y: n.position?.y ?? Math.floor(i / 8) * 120,
-        width: 160,
-        height: 50
-      }));
-
       edges = data.edges || [];
+      nodes = autoLayout(data.nodes, edges);
 
       document.getElementById("loading").style.display = "none";
       draw();
     });
 
     // ---------------------------
-    // COORD HELPERS
+    // COORD SYSTEM
     // ---------------------------
-    function worldToScreen(x, y) {
-      return {
-        x: x * scale + offsetX,
-        y: y * scale + offsetY
-      };
-    }
-
     function screenToWorld(x, y) {
       return {
         x: (x - offsetX) / scale,
@@ -98,18 +160,18 @@
     }
 
     function getNodeAt(x, y) {
-      const world = screenToWorld(x, y);
+      const w = screenToWorld(x, y);
 
       return nodes.find(n =>
-        world.x >= n.x &&
-        world.x <= n.x + n.width &&
-        world.y >= n.y &&
-        world.y <= n.y + n.height
+        w.x >= n.x &&
+        w.x <= n.x + n.width &&
+        w.y >= n.y &&
+        w.y <= n.y + n.height
       );
     }
 
     // ---------------------------
-    // DRAW LOOP
+    // DRAW
     // ---------------------------
     function draw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -118,33 +180,68 @@
       ctx.translate(offsetX, offsetY);
       ctx.scale(scale, scale);
 
-      // edges first
+      // EDGES (CURVED)
       ctx.strokeStyle = "#3b82f6";
       ctx.lineWidth = 2;
 
       edges.forEach(e => {
-        const source = nodes.find(n => n.id === e.source);
-        const target = nodes.find(n => n.id === e.target);
-        if (!source || !target) return;
+        const s = nodes.find(n => n.id === e.source);
+        const t = nodes.find(n => n.id === e.target);
+        if (!s || !t) return;
+
+        const midX = s.x + (t.x - s.x) * 0.5;
 
         ctx.beginPath();
-        ctx.moveTo(source.x + 80, source.y + 25);
-        ctx.lineTo(target.x + 80, target.y + 25);
+        ctx.moveTo(s.x + 80, s.y + 25);
+        ctx.bezierCurveTo(
+          midX, s.y + 25,
+          midX, t.y + 25,
+          t.x + 80, t.y + 25
+        );
         ctx.stroke();
       });
 
-      // nodes
+      // NODES
       nodes.forEach(n => {
         ctx.fillStyle = "#1e293b";
         ctx.strokeStyle = "#334155";
-        ctx.lineWidth = 1;
 
         ctx.fillRect(n.x, n.y, n.width, n.height);
         ctx.strokeRect(n.x, n.y, n.width, n.height);
 
         ctx.fillStyle = "#f8fafc";
         ctx.font = "11px monospace";
-        ctx.fillText(n.data?.label || n.id, n.x + 10, n.y + 30);
+        ctx.fillText(n.data?.label || n.id, n.x + 10, n.y + 28);
+      });
+
+      ctx.restore();
+
+      drawMiniMap();
+    }
+
+    // ---------------------------
+    // MINIMAP
+    // ---------------------------
+    function drawMiniMap() {
+      const w = 200, h = 120;
+
+      ctx.save();
+      ctx.globalAlpha = 0.9;
+
+      ctx.fillStyle = "#0f172a";
+      ctx.fillRect(canvas.width - w - 10, canvas.height - h - 10, w, h);
+
+      const sx = w / 2000;
+      const sy = h / 2000;
+
+      ctx.fillStyle = "#3b82f6";
+
+      nodes.forEach(n => {
+        ctx.fillRect(
+          canvas.width - w - 10 + n.x * sx,
+          canvas.height - h - 10 + n.y * sy,
+          3, 3
+        );
       });
 
       ctx.restore();
@@ -158,10 +255,10 @@
 
       if (node) {
         draggingNode = node;
-        const world = screenToWorld(e.clientX, e.clientY);
 
-        dragOffsetX = world.x - node.x;
-        dragOffsetY = world.y - node.y;
+        const w = screenToWorld(e.clientX, e.clientY);
+        dragOffsetX = w.x - node.x;
+        dragOffsetY = w.y - node.y;
       } else {
         isPanning = true;
         lastMouse = { x: e.clientX, y: e.clientY };
@@ -170,10 +267,10 @@
 
     canvas.addEventListener("mousemove", (e) => {
       if (draggingNode) {
-        const world = screenToWorld(e.clientX, e.clientY);
+        const w = screenToWorld(e.clientX, e.clientY);
 
-        draggingNode.x = world.x - dragOffsetX;
-        draggingNode.y = world.y - dragOffsetY;
+        draggingNode.x = w.x - dragOffsetX;
+        draggingNode.y = w.y - dragOffsetY;
 
         draw();
       }
@@ -197,23 +294,56 @@
     canvas.addEventListener("wheel", (e) => {
       e.preventDefault();
 
-      const zoomIntensity = 0.001;
-      const delta = e.deltaY * -zoomIntensity;
+      const zoom = 0.001;
+      const delta = e.deltaY * -zoom;
 
       const mouse = { x: e.clientX, y: e.clientY };
-
-      const world = screenToWorld(mouse.x, mouse.y);
+      const w = screenToWorld(mouse.x, mouse.y);
 
       scale += delta;
-      scale = Math.min(Math.max(0.4, scale), 2.5);
+      scale = Math.max(0.4, Math.min(2.5, scale));
 
-      const newScreen = worldToScreen(world.x, world.y);
-
-      offsetX += mouse.x - newScreen.x;
-      offsetY += mouse.y - newScreen.y;
+      offsetX = mouse.x - w.x * scale;
+      offsetY = mouse.y - w.y * scale;
 
       draw();
     }, { passive: false });
+
+    // ---------------------------
+    // INSPECTOR
+    // ---------------------------
+    canvas.addEventListener("click", (e) => {
+      const node = getNodeAt(e.clientX, e.clientY);
+      if (!node) return;
+
+      document.getElementById("panel").innerHTML = `
+        <div style="font-weight:bold;margin-bottom:8px;">${node.id}</div>
+        <div style="opacity:0.8;margin-bottom:8px;">${node.data?.label || ""}</div>
+        <pre style="white-space:pre-wrap;color:#94a3b8">
+${JSON.stringify(node, null, 2)}
+        </pre>
+      `;
+    });
+
+    // ---------------------------
+    // SEARCH (/)
+    // ---------------------------
+    window.addEventListener("keydown", (e) => {
+      if (e.key !== "/") return;
+
+      const term = prompt("Search node:");
+      if (!term) return;
+
+      const match = nodes.find(n =>
+        (n.data?.label || "").toLowerCase().includes(term.toLowerCase())
+      );
+
+      if (match) {
+        offsetX = -match.x * scale + window.innerWidth / 2;
+        offsetY = -match.y * scale + window.innerHeight / 2;
+        draw();
+      }
+    });
 
     draw();
   </script>
