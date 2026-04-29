@@ -133,16 +133,17 @@
 
     // ✅ FIXED MESSAGE HANDLER
     window.addEventListener("message", (event) => {
-      const data = event.data;
+  const payload = event.data;
 
-      if (!data?.graph?.nodes) return;
+  const graph = payload?.graph;
+  if (!graph?.nodes) return;
 
-      edges = data.graph.edges || [];
-      nodes = autoLayout(data.graph.nodes, edges);
+  edges = graph.edges || [];
+  nodes = autoLayout(graph.nodes, edges);
 
-      document.getElementById("loading").style.display = "none";
-      draw();
-    });
+  document.getElementById("loading").style.display = "none";
+  draw();
+});
 
     function screenToWorld(x, y) {
       return {
