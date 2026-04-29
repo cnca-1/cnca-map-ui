@@ -4,9 +4,11 @@
     <title>CNCA Neural Map</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/reactflow@11.10.1/dist/react-flow.standalone.production.min.js"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@reactflow/core@11.10.1/dist/react-flow-core.production.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@reactflow/core@11.10.1/dist/style.css">
+    
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://unpkg.com/reactflow@11.10.1/dist/style.css">
     <style>
         body, html, #root { width: 100%; height: 100%; margin: 0; background: #0b0e14; overflow: hidden; }
         .react-flow__node { 
@@ -21,15 +23,15 @@
 <body>
     <div id="root"></div>
     <script>
-        // Wait for the window to finish loading everything
         window.onload = function() {
-            const { useState, useEffect } = React;
+            const { useState, useEffect, createElement } = React;
             
-            // This is the most compatible way to find the Flow component
-            const Flow = window.ReactFlow ? (window.ReactFlow.ReactFlow || window.ReactFlow.default || window.ReactFlow) : null;
+            // We are looking for the 'ReactFlow' object in the browser's global memory
+            const Flow = window.ReactFlow || window.ReactFlowCore;
 
             if (!Flow) {
-                document.getElementById('root').innerHTML = '<div style="color:white; padding:20px;">Error: ReactFlow library not found. Check your internet connection.</div>';
+                document.getElementById('root').innerHTML = '<div style="color:white; padding:20px; font-family:monospace;">System Error: ReactFlow core not initialized. <br/> Retrying in 2 seconds...</div>';
+                setTimeout(() => location.reload(), 2000);
                 return;
             }
 
@@ -40,9 +42,10 @@
                 useEffect(() => {
                     const handleMessage = (event) => {
                         if (event.data && event.data.nodes) {
+                            // Layout logic: 189 nodes need space!
                             const laidOutNodes = event.data.nodes.map((node, i) => ({
                                 ...node,
-                                position: { x: (i % 8) * 250, y: Math.floor(i / 10) * 150 }
+                                position: { x: (i % 8) * 280, y: Math.floor(i / 8) * 180 }
                             }));
                             setNodes(laidOutNodes);
                             setEdges(event.data.edges || []);
@@ -53,12 +56,13 @@
                 }, []);
 
                 if (nodes.length === 0) {
-                    return React.createElement('div', { 
+                    return createElement('div', { 
                         style: { color: '#475569', display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontFamily: 'monospace' } 
                     }, "Awaiting Neural Data...");
                 }
 
-                return React.createElement(Flow, {
+                // Call the ReactFlow component directly from the library
+                return createElement(Flow.ReactFlow || Flow, {
                     nodes: nodes,
                     edges: edges,
                     fitView: true,
@@ -67,7 +71,7 @@
             }
 
             const root = ReactDOM.createRoot(document.getElementById('root'));
-            root.render(React.createElement(App));
+            root.render(createElement(App));
         };
     </script>
 </body>
