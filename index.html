@@ -71,42 +71,62 @@
     window.addEventListener("resize", resize);
     resize();
 
-    // simple layout
     function autoLayout(nodes, edges) {
-      return nodes.map((n, i) => ({
-        ...n,
-        x: (i % 10) * 180,
-        y: Math.floor(i / 10) * 120,
-        width: 160,
-        height: 50
-      }));
+      const result = [];
+
+      nodes.forEach((n, i) => {
+        console.log("NODE SAMPLE:", n);
+
+        result.push({
+          ...n,
+          x: (i % 10) * 180,
+          y: Math.floor(i / 10) * 120,
+          width: 160,
+          height: 50
+        });
+      });
+
+      return result;
     }
 
     window.addEventListener("message", (event) => {
+      console.log("📩 RAW MESSAGE:", event.data);
+
       let payload = event.data;
 
       if (typeof payload === "string") {
         try {
           payload = JSON.parse(payload);
-        } catch {
+        } catch (e) {
+          console.log("❌ Outer JSON parse failed");
           return;
         }
       }
+
+      console.log("📦 AFTER OUTER PARSE:", payload);
 
       let graph = payload.graph;
 
       if (Array.isArray(graph)) {
         try {
           graph = JSON.parse(graph[0]);
-        } catch {
+        } catch (e) {
+          console.log("❌ Inner graph parse failed");
           return;
         }
       }
 
-      if (!graph || !graph.nodes) return;
+      console.log("🧠 FINAL GRAPH:", graph);
+
+      if (!graph || !graph.nodes) {
+        console.log("❌ No valid graph.nodes");
+        return;
+      }
 
       edges = graph.edges || [];
       nodes = autoLayout(graph.nodes, edges);
+
+      console.log("✅ NODES LOADED:", nodes.length);
 
       document.getElementById("loading").style.display = "none";
       draw();
@@ -130,16 +150,17 @@
       );
     }
 
-    function getLabel(n) {
-      const d = n.data || {};
-
+    function resolveLabel(n) {
       return (
-        d.name ||                 // ✅ Bubble user-edited name (BEST)
-        d.element_name ||         // fallback
-        d.elementName ||
-        d.custom_name ||
-        d.default_name ||
-        d.label ||
+        n.data?.name ||
+        n.data?.default_name ||
+        n.data?.element_name ||
+        n.data?.elementName ||
+        n.data?.custom_name ||
+        n.data?.label ||
+        (n.data?.event && n.data?.element_id
+          ? `${n.data.event} (${n.data.element_id})`
+          : n.data?.event) ||
         n.id
       );
     }
@@ -183,12 +204,13 @@
         ctx.fillStyle = "#f8fafc";
         ctx.font = "11px monospace";
 
-        const label = getLabel(n);
+        const displayLabel = resolveLabel(n);
 
-        ctx.fillText(label, n.x + 10, n.y + 28);
+        ctx.fillText(displayLabel, n.x + 10, n.y + 28);
       });
 
       ctx.restore();
+
       drawMiniMap();
     }
 
@@ -235,8 +257,10 @@
     canvas.addEventListener("mousemove", (e) => {
       if (draggingNode) {
         const w = screenToWorld(e.clientX, e.clientY);
+
         draggingNode.x = w.x - dragOffsetX;
         draggingNode.y = w.y - dragOffsetY;
+
         draw();
       }
 
@@ -245,6 +269,7 @@
         offsetY += e.clientY - lastMouse.y;
 
         lastMouse = { x: e.clientX, y: e.clientY };
+
         draw();
       }
     });
@@ -278,11 +303,28 @@
 
       document.getElementById("panel").innerHTML = `
         <div style="font-weight:bold;margin-bottom:8px;">${node.id}</div>
-        <div style="opacity:0.8;margin-bottom:8px;">${getLabel(node)}</div>
+        <div style="opacity:0.8;margin-bottom:8px;">${resolveLabel(node)}</div>
         <pre style="white-space:pre-wrap;color:#94a3b8">
 ${JSON.stringify(node, null, 2)}
         </pre>
       `;
+    });
+
+    window.addEventListener("keydown", (e) => {
+      if (e.key !== "/") return;
+
+      const term = prompt("Search node:");
+      if (!term) return;
+
+      const match = nodes.find(n =>
+        resolveLabel(n).toLowerCase().includes(term.toLowerCase())
+      );
+
+      if (match) {
+        offsetX = -match.x * scale + window.innerWidth / 2;
+        offsetY = -match.y * scale + window.innerHeight / 2;
+        draw();
+      }
     });
 
     draw();
