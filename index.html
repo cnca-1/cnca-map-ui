@@ -71,9 +71,6 @@
     window.addEventListener("resize", resize);
     resize();
 
-    // ---------------------------
-    // AUTO LAYOUT (FIX SQUISHING)
-    // ---------------------------
     function autoLayout(nodes, edges) {
       const nodeMap = new Map(nodes.map(n => [n.id, n]));
 
@@ -103,7 +100,6 @@
         visited.add(id);
 
         place(id, level);
-
         (children.get(id) || []).forEach(child => dfs(child, level + 1));
       }
 
@@ -135,23 +131,19 @@
       return result;
     }
 
-    // ---------------------------
-    // RECEIVE DATA
-    // ---------------------------
+    // ✅ FIXED MESSAGE HANDLER
     window.addEventListener("message", (event) => {
       const data = event.data;
-      if (!data?.nodes) return;
 
-      edges = data.edges || [];
-      nodes = autoLayout(data.nodes, edges);
+      if (!data?.graph?.nodes) return;
+
+      edges = data.graph.edges || [];
+      nodes = autoLayout(data.graph.nodes, edges);
 
       document.getElementById("loading").style.display = "none";
       draw();
     });
 
-    // ---------------------------
-    // COORD SYSTEM
-    // ---------------------------
     function screenToWorld(x, y) {
       return {
         x: (x - offsetX) / scale,
@@ -170,9 +162,6 @@
       );
     }
 
-    // ---------------------------
-    // DRAW
-    // ---------------------------
     function draw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -180,7 +169,6 @@
       ctx.translate(offsetX, offsetY);
       ctx.scale(scale, scale);
 
-      // EDGES (CURVED)
       ctx.strokeStyle = "#3b82f6";
       ctx.lineWidth = 2;
 
@@ -201,7 +189,6 @@
         ctx.stroke();
       });
 
-      // NODES
       nodes.forEach(n => {
         ctx.fillStyle = "#1e293b";
         ctx.strokeStyle = "#334155";
@@ -219,9 +206,6 @@
       drawMiniMap();
     }
 
-    // ---------------------------
-    // MINIMAP
-    // ---------------------------
     function drawMiniMap() {
       const w = 200, h = 120;
 
@@ -247,9 +231,6 @@
       ctx.restore();
     }
 
-    // ---------------------------
-    // INTERACTION
-    // ---------------------------
     canvas.addEventListener("mousedown", (e) => {
       const node = getNodeAt(e.clientX, e.clientY);
 
@@ -290,7 +271,6 @@
       isPanning = false;
     });
 
-    // zoom
     canvas.addEventListener("wheel", (e) => {
       e.preventDefault();
 
@@ -309,9 +289,6 @@
       draw();
     }, { passive: false });
 
-    // ---------------------------
-    // INSPECTOR
-    // ---------------------------
     canvas.addEventListener("click", (e) => {
       const node = getNodeAt(e.clientX, e.clientY);
       if (!node) return;
@@ -325,9 +302,6 @@ ${JSON.stringify(node, null, 2)}
       `;
     });
 
-    // ---------------------------
-    // SEARCH (/)
-    // ---------------------------
     window.addEventListener("keydown", (e) => {
       if (e.key !== "/") return;
 
