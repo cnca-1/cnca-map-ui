@@ -88,30 +88,40 @@
       return result;
     }
 
-    window.addEventListener("message", (event) => {
-      let payload = event.data;
+   window.addEventListener("message", (event) => {
+  console.log("📩 RAW MESSAGE:", event.data);
 
-      // handle Bubble string payloads
-      if (typeof payload === "string") {
-        try {
-          payload = JSON.parse(payload);
-        } catch (e) {
-          console.warn("Invalid JSON payload");
-          return;
-        }
-      }
+  let payload = event.data;
 
-      if (!payload || payload.type !== "NEURAL_MAP_V1") return;
+  // handle Bubble stringified JSON
+  if (typeof payload === "string") {
+    try {
+      payload = JSON.parse(payload);
+    } catch (e) {
+      console.log("❌ JSON parse failed");
+      return;
+    }
+  }
 
-      const graph = payload.graph;
-      if (!graph || !graph.nodes) return;
+  console.log("📦 PARSED PAYLOAD:", payload);
 
-      edges = graph.edges || [];
-      nodes = autoLayout(graph.nodes, edges);
+  if (!payload) return;
 
-      document.getElementById("loading").style.display = "none";
-      draw();
-    });
+  const graph = payload.graph;
+
+  if (!graph || !graph.nodes) {
+    console.log("❌ No graph or nodes found");
+    return;
+  }
+
+  edges = graph.edges || [];
+  nodes = autoLayout(graph.nodes, edges);
+
+  console.log("✅ NODES LOADED:", nodes.length);
+
+  document.getElementById("loading").style.display = "none";
+  draw();
+});
 
     function screenToWorld(x, y) {
       return {
