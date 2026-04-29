@@ -1,122 +1,221 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>CNCA Neural Map</title>
-
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-  <!-- React Flow CSS (IMPORTANT: keep this OUT of JS imports) -->
-  <link
-    rel="stylesheet"
-    href="https://cdn.jsdelivr.net/npm/reactflow@11.10.1/dist/style.css"
-  />
+  <title>CNCA Neural Map (Canvas Edition)</title>
 
   <style>
-    html, body, #root {
-      width: 100%;
-      height: 100%;
+    html, body {
       margin: 0;
-      background: #0b0e14;
+      padding: 0;
       overflow: hidden;
-      font-family: ui-monospace, monospace;
+      background: #0b0e14;
+      font-family: monospace;
     }
 
-    .react-flow__node {
-      background: #1e293b;
-      color: #f8fafc;
-      border: 1px solid #334155;
-      border-radius: 8px;
-      padding: 12px;
-      font-size: 11px;
-      width: 180px;
-      text-align: center;
+    canvas {
+      display: block;
     }
 
-    .react-flow__edge-path {
-      stroke: #3b82f6;
-      stroke-width: 2;
-    }
-
-    .react-flow__attribution {
-      display: none;
+    #loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #475569;
+      font-size: 14px;
     }
   </style>
 </head>
 
 <body>
-  <div id="root"></div>
+  <div id="loading">Awaiting Neural Data...</div>
+  <canvas id="canvas"></canvas>
 
-  <script type="module">
-    import React, { useState, useEffect } from "https://esm.sh/react@18";
-    import { createRoot } from "https://esm.sh/react-dom@18/client";
+  <script>
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
 
-    import ReactFlow, {
-      ReactFlowProvider,
-      Background,
-      Controls,
-      MiniMap
-    } from "https://cdn.jsdelivr.net/npm/reactflow@11.10.1/+esm";
+    let nodes = [];
+    let edges = [];
 
-    function App() {
-      const [nodes, setNodes] = useState([]);
-      const [edges, setEdges] = useState([]);
+    // camera state (pan + zoom)
+    let offsetX = 0;
+    let offsetY = 0;
+    let scale = 1;
 
-      useEffect(() => {
-        const handleMessage = (event) => {
-          const data = event.data;
+    let draggingNode = null;
+    let dragOffsetX = 0;
+    let dragOffsetY = 0;
 
-          if (!data?.nodes) return;
+    let isPanning = false;
+    let lastMouse = { x: 0, y: 0 };
 
-          const laidOutNodes = data.nodes.map((node, i) => ({
-            ...node,
-            position: node.position || {
-              x: (i % 8) * 220,
-              y: Math.floor(i / 8) * 140
-            }
-          }));
+    function resize() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      draw();
+    }
 
-          setNodes(laidOutNodes);
-          setEdges(data.edges || []);
-        };
+    window.addEventListener("resize", resize);
+    resize();
 
-        window.addEventListener("message", handleMessage);
-        return () => window.removeEventListener("message", handleMessage);
-      }, []);
+    // ---------------------------
+    // RECEIVE DATA FROM BUBBLE
+    // ---------------------------
+    window.addEventListener("message", (event) => {
+      const data = event.data;
+      if (!data?.nodes) return;
 
-      if (!nodes.length) {
-        return (
-          <div style={{
-            color: "#475569",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            height: "100vh"
-          }}>
-            Awaiting Neural Data...
-          </div>
-        );
-      }
+      nodes = data.nodes.map((n, i) => ({
+        ...n,
+        x: n.position?.x ?? (i % 8) * 200,
+        y: n.position?.y ?? Math.floor(i / 8) * 120,
+        width: 160,
+        height: 50
+      }));
 
-      return (
-        <ReactFlowProvider>
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            fitView
-            panOnScroll
-            zoomOnScroll
-            nodesDraggable
-            elementsSelectable
-          >
-            <Background />
-            <Controls />
-            <MiniMap />
-          </ReactFlow>
-        </ReactFlowProvider>
+      edges = data.edges || [];
+
+      document.getElementById("loading").style.display = "none";
+      draw();
+    });
+
+    // ---------------------------
+    // COORD HELPERS
+    // ---------------------------
+    function worldToScreen(x, y) {
+      return {
+        x: x * scale + offsetX,
+        y: y * scale + offsetY
+      };
+    }
+
+    function screenToWorld(x, y) {
+      return {
+        x: (x - offsetX) / scale,
+        y: (y - offsetY) / scale
+      };
+    }
+
+    function getNodeAt(x, y) {
+      const world = screenToWorld(x, y);
+
+      return nodes.find(n =>
+        world.x >= n.x &&
+        world.x <= n.x + n.width &&
+        world.y >= n.y &&
+        world.y <= n.y + n.height
       );
     }
 
-    createRoot(document.getElementById("root")).render(<App />);
+    // ---------------------------
+    // DRAW LOOP
+    // ---------------------------
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      ctx.save();
+      ctx.translate(offsetX, offsetY);
+      ctx.scale(scale, scale);
+
+      // edges first
+      ctx.strokeStyle = "#3b82f6";
+      ctx.lineWidth = 2;
+
+      edges.forEach(e => {
+        const source = nodes.find(n => n.id === e.source);
+        const target = nodes.find(n => n.id === e.target);
+        if (!source || !target) return;
+
+        ctx.beginPath();
+        ctx.moveTo(source.x + 80, source.y + 25);
+        ctx.lineTo(target.x + 80, target.y + 25);
+        ctx.stroke();
+      });
+
+      // nodes
+      nodes.forEach(n => {
+        ctx.fillStyle = "#1e293b";
+        ctx.strokeStyle = "#334155";
+        ctx.lineWidth = 1;
+
+        ctx.fillRect(n.x, n.y, n.width, n.height);
+        ctx.strokeRect(n.x, n.y, n.width, n.height);
+
+        ctx.fillStyle = "#f8fafc";
+        ctx.font = "11px monospace";
+        ctx.fillText(n.data?.label || n.id, n.x + 10, n.y + 30);
+      });
+
+      ctx.restore();
+    }
+
+    // ---------------------------
+    // INTERACTION
+    // ---------------------------
+    canvas.addEventListener("mousedown", (e) => {
+      const node = getNodeAt(e.clientX, e.clientY);
+
+      if (node) {
+        draggingNode = node;
+        const world = screenToWorld(e.clientX, e.clientY);
+
+        dragOffsetX = world.x - node.x;
+        dragOffsetY = world.y - node.y;
+      } else {
+        isPanning = true;
+        lastMouse = { x: e.clientX, y: e.clientY };
+      }
+    });
+
+    canvas.addEventListener("mousemove", (e) => {
+      if (draggingNode) {
+        const world = screenToWorld(e.clientX, e.clientY);
+
+        draggingNode.x = world.x - dragOffsetX;
+        draggingNode.y = world.y - dragOffsetY;
+
+        draw();
+      }
+
+      if (isPanning) {
+        offsetX += e.clientX - lastMouse.x;
+        offsetY += e.clientY - lastMouse.y;
+
+        lastMouse = { x: e.clientX, y: e.clientY };
+
+        draw();
+      }
+    });
+
+    window.addEventListener("mouseup", () => {
+      draggingNode = null;
+      isPanning = false;
+    });
+
+    // zoom
+    canvas.addEventListener("wheel", (e) => {
+      e.preventDefault();
+
+      const zoomIntensity = 0.001;
+      const delta = e.deltaY * -zoomIntensity;
+
+      const mouse = { x: e.clientX, y: e.clientY };
+
+      const world = screenToWorld(mouse.x, mouse.y);
+
+      scale += delta;
+      scale = Math.min(Math.max(0.4, scale), 2.5);
+
+      const newScreen = worldToScreen(world.x, world.y);
+
+      offsetX += mouse.x - newScreen.x;
+      offsetY += mouse.y - newScreen.y;
+
+      draw();
+    }, { passive: false });
+
+    draw();
   </script>
 </body>
 </html>
