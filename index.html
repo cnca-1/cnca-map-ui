@@ -21,47 +21,54 @@
 <body>
     <div id="root"></div>
     <script>
-        const { useState, useEffect } = React;
-        // This is the specific line that fixes Error #130
-        const ReactFlow = window.ReactFlow.ReactFlow; 
+        // Wait for the window to finish loading everything
+        window.onload = function() {
+            const { useState, useEffect } = React;
+            
+            // This is the most compatible way to find the Flow component
+            const Flow = window.ReactFlow ? (window.ReactFlow.ReactFlow || window.ReactFlow.default || window.ReactFlow) : null;
 
-        function App() {
-            const [nodes, setNodes] = useState([]);
-            const [edges, setEdges] = useState([]);
-
-            useEffect(() => {
-                const handleMessage = (event) => {
-                    if (event.data && event.data.nodes) {
-                        const laidOutNodes = event.data.nodes.map((node, i) => ({
-                            ...node,
-                            // Spread them out more so 189 nodes don't overlap
-                            position: { x: (i % 8) * 250, y: Math.floor(i / 8) * 150 }
-                        }));
-                        setNodes(laidOutNodes);
-                        setEdges(event.data.edges || []);
-                    }
-                };
-                window.addEventListener("message", handleMessage);
-                return () => window.removeEventListener("message", handleMessage);
-            }, []);
-
-            if (nodes.length === 0) {
-                return React.createElement('div', { 
-                    style: { color: '#475569', display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontFamily: 'monospace' } 
-                }, "Awaiting Neural Data...");
+            if (!Flow) {
+                document.getElementById('root').innerHTML = '<div style="color:white; padding:20px;">Error: ReactFlow library not found. Check your internet connection.</div>';
+                return;
             }
 
-            return React.createElement(ReactFlow, {
-                nodes: nodes,
-                edges: edges,
-                fitView: true,
-                // Dark mode styles
-                colorMode: 'dark'
-            });
-        }
+            function App() {
+                const [nodes, setNodes] = useState([]);
+                const [edges, setEdges] = useState([]);
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(React.createElement(App));
+                useEffect(() => {
+                    const handleMessage = (event) => {
+                        if (event.data && event.data.nodes) {
+                            const laidOutNodes = event.data.nodes.map((node, i) => ({
+                                ...node,
+                                position: { x: (i % 8) * 250, y: Math.floor(i / 10) * 150 }
+                            }));
+                            setNodes(laidOutNodes);
+                            setEdges(event.data.edges || []);
+                        }
+                    };
+                    window.addEventListener("message", handleMessage);
+                    return () => window.removeEventListener("message", handleMessage);
+                }, []);
+
+                if (nodes.length === 0) {
+                    return React.createElement('div', { 
+                        style: { color: '#475569', display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontFamily: 'monospace' } 
+                    }, "Awaiting Neural Data...");
+                }
+
+                return React.createElement(Flow, {
+                    nodes: nodes,
+                    edges: edges,
+                    fitView: true,
+                    colorMode: 'dark'
+                });
+            }
+
+            const root = ReactDOM.createRoot(document.getElementById('root'));
+            root.render(React.createElement(App));
+        };
     </script>
 </body>
 </html>
