@@ -190,7 +190,14 @@ window.addEventListener("message", (event) => {
 
         ctx.fillStyle = "#f8fafc";
         ctx.font = "11px monospace";
-        ctx.fillText(n.data?.label || n.id, n.x + 10, n.y + 28);
+        const displayLabel =
+  n.data?.element_name ||
+  n.data?.elementLabel ||
+  n.data?.custom_name ||
+  n.data?.label ||
+  n.id;
+
+ctx.fillText(displayLabel, n.x + 10, n.y + 28);
       });
 
       ctx.restore();
