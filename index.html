@@ -71,79 +71,47 @@
     window.addEventListener("resize", resize);
     resize();
 
+    // SIMPLE SAFE LAYOUT (always works even without edges)
     function autoLayout(nodes, edges) {
-      const nodeMap = new Map(nodes.map(n => [n.id, n]));
-
-      const children = new Map();
-      const parents = new Map();
-
-      nodes.forEach(n => {
-        children.set(n.id, []);
-        parents.set(n.id, 0);
-      });
-
-      edges.forEach(e => {
-        children.get(e.source)?.push(e.target);
-        parents.set(e.target, (parents.get(e.target) || 0) + 1);
-      });
-
-      const levels = [];
-      const visited = new Set();
-
-      function place(id, level) {
-        if (!levels[level]) levels[level] = [];
-        levels[level].push(id);
-      }
-
-      function dfs(id, level) {
-        if (visited.has(id)) return;
-        visited.add(id);
-
-        place(id, level);
-        (children.get(id) || []).forEach(child => dfs(child, level + 1));
-      }
-
-      nodes
-        .filter(n => parents.get(n.id) === 0)
-        .forEach(n => dfs(n.id, 0));
-
-      nodes.forEach(n => {
-        if (!visited.has(n.id)) place(n.id, 0);
-      });
-
       const result = [];
 
-      levels.forEach((col, x) => {
-        col.forEach((id, y) => {
-          const node = nodeMap.get(id);
-          if (!node) return;
-
-          result.push({
-            ...node,
-            x: x * 280,
-            y: y * 140,
-            width: 160,
-            height: 50
-          });
+      nodes.forEach((n, i) => {
+        result.push({
+          ...n,
+          x: (i % 10) * 180,
+          y: Math.floor(i / 10) * 120,
+          width: 160,
+          height: 50
         });
       });
 
       return result;
     }
 
-    // ✅ FIXED MESSAGE HANDLER
     window.addEventListener("message", (event) => {
-  const payload = event.data;
+      let payload = event.data;
 
-  const graph = payload?.graph;
-  if (!graph?.nodes) return;
+      // handle Bubble string payloads
+      if (typeof payload === "string") {
+        try {
+          payload = JSON.parse(payload);
+        } catch (e) {
+          console.warn("Invalid JSON payload");
+          return;
+        }
+      }
 
-  edges = graph.edges || [];
-  nodes = autoLayout(graph.nodes, edges);
+      if (!payload || payload.type !== "NEURAL_MAP_V1") return;
 
-  document.getElementById("loading").style.display = "none";
-  draw();
-});
+      const graph = payload.graph;
+      if (!graph || !graph.nodes) return;
+
+      edges = graph.edges || [];
+      nodes = autoLayout(graph.nodes, edges);
+
+      document.getElementById("loading").style.display = "none";
+      draw();
+    });
 
     function screenToWorld(x, y) {
       return {
@@ -170,6 +138,7 @@
       ctx.translate(offsetX, offsetY);
       ctx.scale(scale, scale);
 
+      // edges
       ctx.strokeStyle = "#3b82f6";
       ctx.lineWidth = 2;
 
@@ -190,6 +159,7 @@
         ctx.stroke();
       });
 
+      // nodes
       nodes.forEach(n => {
         ctx.fillStyle = "#1e293b";
         ctx.strokeStyle = "#334155";
