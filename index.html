@@ -1,40 +1,67 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>CNCA Neural Map</title>
-  <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@reactflow/core@11.10.1/dist/react-flow-core.production.min.js"></script>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@reactflow/core@11.10.1/dist/style.css">
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    body, html, #root { width: 100%; height: 100%; margin: 0; background: #0b0e14; }
-    .react-flow__node { background: #1a1f26; color: white; border: 1px solid #334155; border-radius: 4px; padding: 10px; font-family: monospace; font-size: 10px; }
-    .react-flow__edge-path { stroke: #3b82f6; stroke-width: 2; }
-  </style>
+    <title>CNCA Neural Map</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@reactflow/core@11.10.1/dist/react-flow-core.production.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/@reactflow/core@11.10.1/dist/style.css">
+    <style>
+        body, html, #root { width: 100%; height: 100%; margin: 0; background: #0b0e14; overflow: hidden; }
+        .react-flow__node { 
+            background: #1e293b; color: #f8fafc; border: 1px solid #334155; 
+            border-radius: 8px; padding: 12px; font-family: ui-monospace, monospace; 
+            font-size: 11px; width: 180px; text-align: center; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        }
+        .react-flow__controls { background: #1e293b; border: 1px solid #334155; }
+        .react-flow__controls-button { border-bottom: 1px solid #334155; fill: #f8fafc; }
+    </style>
 </head>
 <body>
-  <div id="root"></div>
-  <script>
-    // This is the "Listener" that waits for Bubble to send data
-    window.addEventListener("message", (event) => {
-      if (event.data && event.data.nodes) {
-        console.log("Received data from Bubble", event.data);
-        renderMap(event.data.nodes, event.data.edges);
-      }
-    }, false);
+    <div id="root"></div>
+    <script>
+        const { useState, useEffect, useCallback } = React;
+        const ReactFlow = window.ReactFlow.default;
 
-    function renderMap(nodes, edges) {
-      // Logic to render the nodes and edges on the screen
-      // For the MVP, we'll auto-layout them in a simple row
-      const positionedNodes = nodes.map((n, i) => ({
-        ...n,
-        position: { x: i * 250, y: 100 } 
-      }));
+        function App() {
+            const [nodes, setNodes] = useState([]);
+            const [edges, setEdges] = useState([]);
 
-      // (Simplified React Flow render logic here...)
-      document.getElementById('root').innerHTML = `<div style="color:white; padding: 20px;">Map Data Received: ${nodes.length} nodes detected. Rendering engine active...</div>`;
-    }
-  </script>
+            useEffect(() => {
+                const handleMessage = (event) => {
+                    // Safety check: only accept data with nodes
+                    if (event.data && event.data.nodes) {
+                        console.log("Data received", event.data);
+                        
+                        // Simple Grid Layout: 10 nodes per row
+                        const laidOutNodes = event.data.nodes.map((node, i) => ({
+                            ...node,
+                            position: { x: (i % 10) * 220, y: Math.floor(i / 10) * 150 }
+                        }));
+
+                        setNodes(laidOutNodes);
+                        setEdges(event.data.edges || []);
+                    }
+                };
+
+                window.addEventListener("message", handleMessage);
+                return () => window.removeEventListener("message", handleMessage);
+            }, []);
+
+            return React.createElement(ReactFlow, {
+                nodes: nodes,
+                edges: edges,
+                fitView: true,
+                // These make the map feel "pro"
+                minZoom: 0.1,
+                maxZoom: 1.5,
+                nodesDraggable: true
+            });
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(React.createElement(App));
+    </script>
 </body>
 </html>
