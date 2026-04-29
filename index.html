@@ -2,11 +2,11 @@
 <html>
 <head>
     <title>CNCA Neural Map</title>
-    <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@reactflow/core@11.10.1/dist/react-flow-core.production.min.js"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/reactflow@11.10.1/dist/react-flow.standalone.production.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@reactflow/core@11.10.1/dist/style.css">
+    <link rel="stylesheet" href="https://unpkg.com/reactflow@11.10.1/dist/style.css">
     <style>
         body, html, #root { width: 100%; height: 100%; margin: 0; background: #0b0e14; overflow: hidden; }
         .react-flow__node { 
@@ -15,14 +15,15 @@
             font-size: 11px; width: 180px; text-align: center; 
         }
         .react-flow__edge-path { stroke: #3b82f6; stroke-width: 2; }
+        .react-flow__attribution { display: none; }
     </style>
 </head>
 <body>
     <div id="root"></div>
     <script>
-        // FIXED ACCESS: We use window.ReactFlow instead of window.ReactFlow.default
         const { useState, useEffect } = React;
-        const ReactFlow = window.ReactFlow; 
+        // This is the specific line that fixes Error #130
+        const ReactFlow = window.ReactFlow.ReactFlow; 
 
         function App() {
             const [nodes, setNodes] = useState([]);
@@ -31,22 +32,19 @@
             useEffect(() => {
                 const handleMessage = (event) => {
                     if (event.data && event.data.nodes) {
-                        // Grid layout logic
                         const laidOutNodes = event.data.nodes.map((node, i) => ({
                             ...node,
-                            position: { x: (i % 10) * 250, y: Math.floor(i / 10) * 150 }
+                            // Spread them out more so 189 nodes don't overlap
+                            position: { x: (i % 8) * 250, y: Math.floor(i / 8) * 150 }
                         }));
-
                         setNodes(laidOutNodes);
                         setEdges(event.data.edges || []);
                     }
                 };
-
                 window.addEventListener("message", handleMessage);
                 return () => window.removeEventListener("message", handleMessage);
             }, []);
 
-            // If no nodes yet, show a loading state
             if (nodes.length === 0) {
                 return React.createElement('div', { 
                     style: { color: '#475569', display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontFamily: 'monospace' } 
@@ -56,7 +54,9 @@
             return React.createElement(ReactFlow, {
                 nodes: nodes,
                 edges: edges,
-                fitView: true
+                fitView: true,
+                // Dark mode styles
+                colorMode: 'dark'
             });
         }
 
