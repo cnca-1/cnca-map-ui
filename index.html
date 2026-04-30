@@ -89,48 +89,141 @@
       return result;
     }
 
-    window.addEventListener("message", (event) => {
-      console.log("📩 RAW MESSAGE:", event.data);
-
-      let payload = event.data;
-
-      if (typeof payload === "string") {
-        try {
-          payload = JSON.parse(payload);
-        } catch (e) {
-          console.log("❌ Outer JSON parse failed");
-          return;
+   window.addEventListener("message", (event) => {
+    const loading = document.getElementById("loading");
+    const panel = document.getElementById("panel");
+    
+    function showError(title, message) {
+        loading.style.display = "none";
+        panel.innerHTML = `
+            <div style="color:#ef4444;font-weight:bold;margin-bottom:8px;">${title}</div>
+            <div style="color:#f87171;font-size:11px;line-height:1.4;margin-bottom:12px;">
+                ${message}
+            </div>
+            <hr style="border:none;border-top:1px solid #334155;margin:8px 0">
+            <div style="color:#94a3b8;font-size:10px;">
+                <strong>Try:</strong>
+                <ul style="margin:4px 0;padding-left:16px">
+                    <li>Ensure .bubble file is valid</li>
+                    <li>Check file size (&lt;10MB)</li>
+                    <li>Reload page and try again</li>
+                </ul>
+            </div>
+        `;
+        console.error(`${title}: ${message}`);
+    }
+    
+    try {
+        let payload = event.data;
+        console.log("📩 Received message:", typeof payload);
+        
+        // Handle API error response
+        if (payload && payload.detail) {
+            return showError("❌ API Error", payload.detail);
         }
-      }
-
-      console.log("📦 AFTER OUTER PARSE:", payload);
-
-      let graph = payload.graph;
-
-      if (Array.isArray(graph)) {
-        try {
-          graph = JSON.parse(graph[0]);
-        } catch (e) {
-          console.log("❌ Inner graph parse failed");
-          return;
+        
+        // Parse if string
+        if (typeof payload === "string") {
+            try {
+                payload = JSON.parse(payload);
+            } catch (e) {
+                return showError(
+                    "❌ Invalid JSON",
+                    "Response from API could not be parsed as JSON"
+                );
+            }
         }
-      }
-
-      console.log("🧠 FINAL GRAPH:", graph);
-
-      if (!graph || !graph.nodes) {
-        console.log("❌ No valid graph.nodes");
-        return;
-      }
-
-      edges = graph.edges || [];
-      nodes = autoLayout(graph.nodes, edges);
-
-      console.log("✅ NODES LOADED:", nodes.length);
-
-      document.getElementById("loading").style.display = "none";
-      draw();
-    });
+        
+        // Validate payload is object
+        if (!payload || typeof payload !== "object") {
+            return showError(
+                "❌ Invalid Response",
+                `Expected object, got ${typeof payload}`
+            );
+        }
+        
+        // Extract graph
+        let graph = payload.graph;
+        
+        // Handle if graph is stringified JSON (shouldn't happen, but Bubble is weird)
+        if (typeof graph === "string") {
+            try {
+                graph = JSON.parse(graph);
+            } catch (e) {
+                return showError(
+                    "❌ Graph Parse Error",
+                    "Graph data inside payload could not be parsed"
+                );
+            }
+        }
+        
+        // Handle if graph is array (extract first element)
+        if (Array.isArray(graph)) {
+            if (graph.length === 0) {
+                return showError("❌ Empty Array", "Graph array is empty");
+            }
+            console.log("ℹ️  Graph is array, using first element");
+            graph = graph[0];
+        }
+        
+        // Validate graph structure
+        if (!graph || typeof graph !== "object") {
+            return showError(
+                "❌ Invalid Graph",
+                `Expected object, got ${typeof graph}`
+            );
+        }
+        
+        if (!Array.isArray(graph.nodes)) {
+            const keys = Object.keys(graph).join(", ");
+            return showError(
+                "❌ Missing Nodes",
+                `Graph missing 'nodes' array. Has: ${keys}`
+            );
+        }
+        
+        if (graph.nodes.length === 0) {
+            return showError(
+                "⚠️ Empty Graph",
+                "The .bubble file has no workflows to visualize"
+            );
+        }
+        
+        // Success! Load the graph
+        console.log(`✅ Loading ${graph.nodes.length} nodes`);
+        
+        nodes = autoLayout(graph.nodes, graph.edges || []);
+        edges = graph.edges || [];
+        
+        loading.style.display = "none";
+        draw();
+        
+        // Show success state
+        panel.innerHTML = `
+            <div style="color:#10b981;font-weight:bold;margin-bottom:8px;">✓ Loaded Successfully</div>
+            <div style="color:#94a3b8;font-size:11px;margin-bottom:12px;">
+                <strong>${nodes.length}</strong> workflows<br>
+                <strong>${edges.length}</strong> connections
+            </div>
+            <hr style="border:none;border-top:1px solid #334155;margin:8px 0">
+            <div style="color:#94a3b8;font-size:10px;line-height:1.6;">
+                <strong>Controls:</strong>
+                <ul style="margin:4px 0;padding-left:16px">
+                    <li>Click nodes for details</li>
+                    <li>Drag nodes to move</li>
+                    <li>Scroll to zoom</li>
+                    <li>Press <code style="color:#d4d4d8">/</code> to search</li>
+                </ul>
+            </div>
+        `;
+        
+    } catch (e) {
+        showError(
+            "❌ Unexpected Error",
+            `${e.message}. Check browser console for details.`
+        );
+    }
+});
 
     function screenToWorld(x, y) {
       return {
