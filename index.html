@@ -3,722 +3,608 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CNCA Neural Map - Workflow Visualization</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <title>CNCA // NEURAL-MAP v2</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
             --bg-deep: #080a0f;
             --panel-bg: #0d1117;
+            --card-bg: #161b22;
             --border-muted: #21262d;
+            --border-hover: #30363d;
             --neon-green: #3fb950;
             --neon-blue: #2f81f7;
+            --neon-purple: #a371f7;
             --neon-orange: #d29922;
             --neon-red: #f85149;
-            --text-dim: #8b949e;
+            --neon-cyan: #39d353;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --text-dim: #484f58;
+            --page-blue: rgba(47, 129, 247, 0.08);
+            --page-blue-border: rgba(47, 129, 247, 0.25);
         }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        html, body {
-            width: 100%;
-            height: 100%;
-        }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            background-color: var(--bg-deep);
-            color: #c9d1d9;
+            background: var(--bg-deep);
+            color: var(--text-primary);
             font-family: 'JetBrains Mono', monospace;
             overflow: hidden;
-            text-transform: uppercase;
+            height: 100vh;
             font-size: 11px;
-            letter-spacing: 0.05em;
+            letter-spacing: 0.03em;
         }
-
-        #canvas-wrapper {
+        #viewport {
+            width: 100%; height: 100%;
+            overflow: hidden; position: relative;
+            cursor: grab;
+        }
+        #viewport:active { cursor: grabbing; }
+        #world {
             position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-image: 
+            transform-origin: 0 0;
+            will-change: transform;
+        }
+        .grid-bg {
+            position: fixed; inset: 0;
+            background:
+                radial-gradient(circle at 50% 50%, rgba(47,129,247,0.03) 0%, transparent 70%),
                 radial-gradient(circle, #161b22 1px, transparent 1px);
-            background-size: 30px 30px;
-            background-color: var(--bg-deep);
-            overflow: hidden;
+            background-size: 100% 100%, 30px 30px;
+            pointer-events: none; z-index: 0;
         }
-
-        #nodes-container {
+        #edge-svg {
+            position: absolute; top: 0; left: 0;
+            overflow: visible; pointer-events: none; z-index: 1;
+        }
+        .edge-path {
+            fill: none; stroke-width: 1.5; opacity: 0.5;
+            transition: opacity 0.2s;
+        }
+        .edge-path.type-triggers  { stroke: var(--neon-blue); stroke-dasharray: 6 4; }
+        .edge-path.type-api       { stroke: var(--neon-purple); }
+        .edge-path.type-default   { stroke: var(--border-hover); stroke-dasharray: 4 4; }
+        .edge-path.highlighted    { opacity: 1; stroke-width: 2.5; filter: drop-shadow(0 0 4px currentColor); }
+        .edge-path.dimmed         { opacity: 0.08; }
+        .edge-arrow { fill: var(--neon-blue); opacity: 0.6; }
+        .page-group {
             position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
+            background: var(--page-blue);
+            border: 1px solid var(--page-blue-border);
+            border-radius: 8px;
+            padding: 52px 20px 20px 20px;
+            min-width: 280px; z-index: 2;
         }
-
-        /* Node styling */
-        .node {
-            background: var(--panel-bg);
+        .page-group-header {
+            position: absolute; top: 0; left: 0; right: 0;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--page-blue-border);
+            display: flex; justify-content: space-between; align-items: center;
+            border-radius: 8px 8px 0 0;
+            background: rgba(47, 129, 247, 0.04);
+        }
+        .page-group-title {
+            font-weight: 700; font-size: 12px;
+            color: var(--neon-blue); text-transform: uppercase;
+        }
+        .page-group-badge {
+            font-size: 9px; padding: 2px 6px;
+            background: rgba(47,129,247,0.15);
+            color: var(--neon-blue); border-radius: 3px;
+        }
+        .wf-node {
+            background: var(--card-bg);
             border: 1px solid var(--border-muted);
-            padding: 12px;
-            width: 220px;
-            position: absolute;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            transition: border-color 0.2s;
-            cursor: pointer;
-            z-index: 10;
-            border-radius: 2px;
-        }
-
-        .node:hover {
-            border-color: var(--text-dim);
-            box-shadow: 0 10px 40px rgba(47, 129, 247, 0.2);
-        }
-
-        .node.selected {
-            border-color: var(--neon-blue);
-            box-shadow: 0 0 20px rgba(47, 129, 247, 0.4);
-        }
-
-        .node.hotspot {
-            border-color: var(--neon-orange);
-        }
-
-        .node.hotspot-high {
-            border-color: var(--neon-red);
-        }
-
-        .node-header {
-            border-bottom: 1px solid var(--border-muted);
-            padding-bottom: 6px;
+            border-radius: 4px;
+            padding: 10px 12px;
             margin-bottom: 8px;
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            gap: 8px;
-        }
-
-        .node-label {
-            color: #fff;
-            font-weight: bold;
-            font-size: 12px;
-            flex: 1;
-            word-break: break-word;
-            line-height: 1.2;
-        }
-
-        .node-type {
-            font-size: 8px;
-            color: var(--text-dim);
-            white-space: nowrap;
-            flex-shrink: 0;
-        }
-
-        .node-type.api {
-            color: var(--neon-green);
-        }
-
-        .node-type.page {
-            color: var(--neon-blue);
-        }
-
-        .node-detail {
-            font-size: 9px;
-            color: var(--text-dim);
-            margin-bottom: 4px;
-            line-height: 1.3;
-        }
-
-        /* SVG for connections */
-        #connection-svg {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 5;
-        }
-
-        .edge {
-            stroke: var(--neon-blue);
-            stroke-width: 1.5;
-            fill: none;
-            stroke-dasharray: 5;
-            animation: dash 20s linear infinite;
-            opacity: 0.6;
-        }
-
-        .edge.hotspot {
-            stroke: var(--neon-orange);
-            stroke-width: 2;
-            opacity: 0.8;
-        }
-
-        .edge.hotspot-high {
-            stroke: var(--neon-red);
-            stroke-width: 2;
-            filter: drop-shadow(0 0 2px var(--neon-red));
-        }
-
-        @keyframes dash {
-            to { stroke-dashoffset: -1000; }
-        }
-
-        /* UI Overlays */
-        .overlay-panel {
-            position: absolute;
-            background: rgba(13, 17, 23, 0.95);
-            border: 1px solid var(--border-muted);
-            backdrop-filter: blur(8px);
-            z-index: 100;
-        }
-
-        .toolbar {
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            display: flex;
-            gap: 10px;
-            padding: 8px 16px;
-            border-radius: 4px;
-        }
-
-        .sidebar-right {
-            top: 20px;
-            right: 20px;
-            width: 300px;
-            max-height: calc(100vh - 40px);
-            padding: 20px;
-            overflow-y: auto;
-            border-radius: 4px;
-        }
-
-        .status-footer {
-            bottom: 20px;
-            left: 20px;
-            padding: 8px 12px;
-            border-radius: 4px;
-        }
-
-        .btn-util {
-            padding: 6px 12px;
-            border: 1px solid var(--border-muted);
-            background: #161b22;
-            color: #c9d1d9;
             cursor: pointer;
-            font-family: inherit;
-            font-size: inherit;
-            text-transform: uppercase;
-            transition: all 0.2s;
-            border-radius: 2px;
+            transition: all 0.15s ease;
+            position: relative;
         }
-
-        .btn-util:hover {
-            background: #21262d;
-            border-color: var(--text-dim);
-        }
-
-        .btn-util.active {
+        .wf-node:last-child { margin-bottom: 0; }
+        .wf-node:hover { border-color: var(--border-hover); background: #1c2128; }
+        .wf-node.selected {
             border-color: var(--neon-blue);
-            color: var(--neon-blue);
+            box-shadow: 0 0 0 1px var(--neon-blue), 0 0 12px rgba(47,129,247,0.15);
         }
-
-        /* Sidebar content */
-        .sidebar-section {
-            margin-bottom: 20px;
+        .wf-node.hotspot     { border-left: 3px solid var(--neon-orange); }
+        .wf-node.hotspot-high { border-left: 3px solid var(--neon-red); }
+        .wf-node-header {
+            display: flex; justify-content: space-between;
+            align-items: flex-start; gap: 6px; margin-bottom: 4px;
         }
-
-        .sidebar-label {
-            color: var(--text-dim);
-            font-size: 9px;
-            margin-bottom: 4px;
-            display: block;
+        .wf-node-name {
+            font-size: 11px; font-weight: 600;
+            color: var(--text-primary);
+            line-height: 1.3; word-break: break-word;
         }
-
-        .sidebar-value {
-            color: #fff;
-            font-weight: bold;
-            font-size: 11px;
+        .wf-node-tag {
+            font-size: 8px; padding: 2px 5px; border-radius: 2px;
+            flex-shrink: 0; text-transform: uppercase; font-weight: 600;
         }
-
-        .stat-box {
-            background: rgba(0,0,0,0.4);
-            border: 1px solid #21262d;
-            padding: 8px;
-            margin: 8px 0;
-            font-size: 9px;
-            line-height: 1.4;
-            border-radius: 4px;
+        .wf-node-tag.event-click     { background: rgba(47,129,247,0.15); color: var(--neon-blue); }
+        .wf-node-tag.event-page      { background: rgba(63,185,80,0.15); color: var(--neon-green); }
+        .wf-node-tag.event-input     { background: rgba(163,113,247,0.15); color: var(--neon-purple); }
+        .wf-node-tag.event-condition  { background: rgba(210,153,34,0.15); color: var(--neon-orange); }
+        .wf-node-tag.event-logout    { background: rgba(248,81,73,0.15); color: var(--neon-red); }
+        .wf-node-tag.event-api       { background: rgba(57,211,83,0.15); color: var(--neon-cyan); }
+        .wf-node-tag.event-default   { background: rgba(72,79,88,0.2); color: var(--text-secondary); }
+        .wf-node-meta { font-size: 9px; color: var(--text-dim); }
+        .conn-dot {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: var(--border-muted);
+            position: absolute; top: 50%; transform: translateY(-50%); z-index: 3;
         }
-
-        .stat-box.danger {
-            border-color: var(--neon-red);
-            color: var(--neon-red);
-        }
-
-        .stat-list {
-            font-size: 9px;
-            line-height: 1.5;
-        }
-
-        .stat-list li {
-            list-style: none;
-            padding: 4px 0;
-            color: #c9d1d9;
-        }
-
-        #loading {
+        .conn-dot.left  { left: -4px; }
+        .conn-dot.right { right: -4px; }
+        .wf-node.selected .conn-dot { background: var(--neon-blue); }
+        .api-group {
             position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            text-align: center;
-            z-index: 200;
+            background: rgba(163,113,247,0.06);
+            border: 1px solid rgba(163,113,247,0.2);
+            border-radius: 8px;
+            padding: 52px 20px 20px 20px;
+            min-width: 260px; z-index: 2;
         }
-
+        .api-group .page-group-header {
+            background: rgba(163,113,247,0.04);
+            border-color: rgba(163,113,247,0.2);
+        }
+        .api-group .page-group-title { color: var(--neon-purple); }
+        .api-group .page-group-badge {
+            background: rgba(163,113,247,0.15); color: var(--neon-purple);
+        }
+        .overlay-panel {
+            position: fixed;
+            background: rgba(13,17,23,0.95);
+            border: 1px solid var(--border-muted);
+            backdrop-filter: blur(12px);
+            z-index: 200; border-radius: 6px;
+        }
+        .toolbar {
+            top: 16px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 1px; padding: 4px;
+            background: var(--panel-bg);
+        }
+        .btn-tool {
+            padding: 7px 14px; border: none; background: transparent;
+            color: var(--text-secondary); cursor: pointer;
+            font-family: inherit; font-size: 10px;
+            text-transform: uppercase; letter-spacing: 0.05em;
+            transition: all 0.15s; border-radius: 3px;
+        }
+        .btn-tool:hover { background: var(--card-bg); color: var(--text-primary); }
+        .btn-tool.active { background: rgba(47,129,247,0.15); color: var(--neon-blue); }
+        .toolbar-divider { width: 1px; background: var(--border-muted); margin: 4px 6px; }
+        .sidebar {
+            top: 16px; right: 16px; width: 300px;
+            max-height: calc(100vh - 32px);
+            padding: 16px; overflow-y: auto;
+        }
+        .sidebar-title { font-size: 10px; color: var(--text-dim); text-transform: uppercase; margin-bottom: 12px; letter-spacing: 0.08em; }
+        .sidebar-field { margin-bottom: 14px; }
+        .sidebar-label { font-size: 9px; color: var(--text-dim); text-transform: uppercase; margin-bottom: 3px; }
+        .sidebar-value { font-size: 11px; color: var(--text-primary); font-weight: 600; word-break: break-word; }
+        .sidebar-divider { border: none; border-top: 1px solid var(--border-muted); margin: 14px 0; }
+        .sidebar-list { list-style: none; font-size: 10px; }
+        .sidebar-list li { padding: 4px 0; color: var(--text-secondary); border-bottom: 1px solid rgba(33,38,45,0.5); }
+        .sidebar-list li:last-child { border: none; }
+        .break-risk {
+            background: rgba(248,81,73,0.1);
+            border: 1px solid rgba(248,81,73,0.3);
+            border-radius: 4px; padding: 10px; margin-top: 8px;
+        }
+        .status-bar {
+            bottom: 16px; left: 16px; padding: 8px 14px;
+            font-size: 10px; color: var(--text-secondary);
+            display: flex; gap: 16px;
+        }
+        .status-bar span { color: var(--text-primary); font-weight: 600; }
+        .legend {
+            bottom: 16px; right: 16px; padding: 12px 16px; font-size: 9px;
+        }
+        .legend-title { color: var(--text-dim); text-transform: uppercase; margin-bottom: 8px; font-size: 9px; letter-spacing: 0.08em; }
+        .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; color: var(--text-secondary); }
+        .legend-swatch { width: 16px; height: 3px; border-radius: 1px; flex-shrink: 0; }
+        #loading {
+            position: fixed; inset: 0;
+            display: flex; align-items: center; justify-content: center;
+            z-index: 300; background: var(--bg-deep);
+            flex-direction: column; gap: 16px;
+        }
         .spinner {
-            width: 40px;
-            height: 40px;
+            width: 32px; height: 32px;
             border: 2px solid var(--border-muted);
             border-top-color: var(--neon-blue);
             border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-            margin: 0 auto 12px;
+            animation: spin 0.7s linear infinite;
         }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        #no-data {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            text-align: center;
-            z-index: 200;
-            color: var(--text-dim);
-            display: none;
-        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        #loading.hidden { display: none; }
     </style>
 </head>
-
 <body>
-
-    <div id="canvas-wrapper">
-        <svg id="connection-svg"></svg>
-        <div id="nodes-container"></div>
-    </div>
-
+    <div class="grid-bg"></div>
     <div id="loading">
         <div class="spinner"></div>
-        <div>INITIALIZING NEURAL MAP...</div>
+        <div style="color: var(--text-dim);">INITIALIZING NEURAL MAP...</div>
     </div>
-
-    <div id="no-data">
-        <div style="font-size: 14px; margin-bottom: 8px;">NO DATA RECEIVED</div>
-        <div style="font-size: 11px;">Upload a .bubble file to visualize</div>
+    <div id="viewport">
+        <div id="world">
+            <svg id="edge-svg">
+                <defs>
+                    <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+                        <polygon points="0 0, 8 3, 0 6" class="edge-arrow" />
+                    </marker>
+                </defs>
+            </svg>
+        </div>
     </div>
-
-    <!-- Toolbar -->
-    <div class="overlay-panel toolbar">
-        <button class="btn-util" id="btn-fit">FIT_VIEW</button>
-        <button class="btn-util" id="btn-hotspots">SHOW_HOTSPOTS</button>
-        <button class="btn-util" id="btn-reset">RESET</button>
-        <div style="width: 1px; background: #21262d; margin: 0 10px;"></div>
-        <button class="btn-util" id="btn-zoom">ZOOM: 100%</button>
+    <div class="overlay-panel toolbar" id="toolbar">
+        <button class="btn-tool active" data-mode="global">GLOBAL_VIEW</button>
+        <button class="btn-tool" data-mode="page">PAGE_VIEW</button>
+        <div class="toolbar-divider"></div>
+        <button class="btn-tool" id="btn-fit">FIT</button>
+        <button class="btn-tool" id="btn-zoom-label">100%</button>
     </div>
-
-    <!-- Sidebar -->
-    <div class="overlay-panel sidebar-right" id="sidebar">
-        <div style="text-align: center; color: var(--text-dim);">SELECT A WORKFLOW</div>
+    <div class="overlay-panel sidebar" id="sidebar">
+        <div class="sidebar-title">SELECT A WORKFLOW</div>
+        <div style="color: var(--text-dim); font-size: 10px;">Click any workflow card to inspect.</div>
     </div>
-
-    <!-- Status Footer -->
-    <div class="overlay-panel status-footer" id="status">
-        INITIALIZING...
+    <div class="overlay-panel status-bar" id="status">LOADING...</div>
+    <div class="overlay-panel legend">
+        <div class="legend-title">Connections</div>
+        <div class="legend-item"><div class="legend-swatch" style="background: var(--neon-blue);"></div> Triggers</div>
+        <div class="legend-item"><div class="legend-swatch" style="background: var(--neon-purple);"></div> API call</div>
+        <div class="legend-item"><div class="legend-swatch" style="background: var(--neon-orange);"></div> Hotspot link</div>
     </div>
+<script>
+(() => {
+    let graphData = null;
+    let pages = [];
+    let apiGroup = null;
+    let edgeData = [];
+    let selectedId = null;
+    let scale = 1, tx = 0, ty = 0;
 
-    <script>
-        // Global state
-        let graphData = null;
-        let nodeElements = [];
-        let selectedNode = null;
-        let scale = 1;
-        let tx = 0;
-        let ty = 0;
-        let simulation = null;
+    const world = document.getElementById('world');
+    const viewport = document.getElementById('viewport');
+    const edgeSvg = document.getElementById('edge-svg');
 
-        // Canvas setup
-        const canvasWrapper = document.getElementById('canvas-wrapper');
-        const svg = d3.select('#connection-svg');
-        const nodesContainer = document.getElementById('nodes-container');
+    window.addEventListener('message', (e) => {
+        try {
+            let p = e.data;
+            if (Array.isArray(p)) p = p[0];
+            if (!p || p.error) { showError(p?.detail || 'Unknown error'); return; }
+            if (!p.graph?.nodes) { showError('Invalid graph data'); return; }
+            graphData = p;
+            console.log('✅ Data received', { nodes: p.graph.nodes.length, edges: p.graph.edges.length });
+            buildCanvas();
+        } catch (err) { console.error(err); showError(err.message); }
+    });
 
-        // Listen for graph data from postMessage
-        window.addEventListener('message', (event) => {
-            try {
-                let payload = event.data;
+    function showError(msg) {
+        document.getElementById('loading').innerHTML =
+            '<div style="color:var(--neon-red)">ERROR</div><div style="color:var(--text-secondary)">' + msg + '</div>';
+    }
 
-                // Handle array wrapping from Bubble
-                if (Array.isArray(payload)) {
-                    payload = payload[0];
-                }
+    function buildCanvas() {
+        document.getElementById('loading').classList.add('hidden');
+        const nodes = graphData.graph.nodes;
+        const edges = graphData.graph.edges || [];
 
-                // Check for errors
-                if (payload.error || payload.detail) {
-                    console.error('API Error:', payload.detail || payload.error);
-                    showError(payload.detail || 'Unknown error');
-                    return;
-                }
-
-                // Validate structure
-                if (!payload.graph || !payload.graph.nodes) {
-                    showError('Invalid graph data received');
-                    return;
-                }
-
-                graphData = payload.graph;
-                console.log('✅ Graph data received:', {
-                    nodes: graphData.nodes.length,
-                    edges: graphData.edges.length
-                });
-                initializeVisualization();
-            } catch (e) {
-                console.error('Error processing graph:', e);
-                showError(e.message);
+        // Group by page
+        const pageMap = {};
+        const apiWorkflows = [];
+        nodes.forEach(n => {
+            const d = n.data || {};
+            if (d.type === 'API_WORKFLOW') { apiWorkflows.push(n); }
+            else {
+                const pid = d.page || '_orphan';
+                if (!pageMap[pid]) pageMap[pid] = [];
+                pageMap[pid].push(n);
             }
         });
 
-        function showError(message) {
-            document.getElementById('loading').style.display = 'none';
-            document.getElementById('no-data').innerHTML = `
-                <div style="color: var(--neon-red); font-size: 14px; margin-bottom: 8px;">ERROR</div>
-                <div style="font-size: 11px; color: #c9d1d9;">${message}</div>
-            `;
-            document.getElementById('no-data').style.display = 'block';
-        }
+        // Sort pages by workflow count descending
+        const pageIds = Object.keys(pageMap).sort((a, b) => pageMap[b].length - pageMap[a].length);
 
-        function initializeVisualization() {
-            document.getElementById('loading').style.display = 'none';
+        const NODE_W = 240, NODE_H = 56, NODE_GAP = 8;
+        const PAGE_PAD_TOP = 52, PAGE_PAD = 20;
+        const COL_GAP = 50, ROW_GAP = 50;
+        const COLS = Math.min(4, Math.ceil(Math.sqrt(pageIds.length)));
 
-            if (!graphData.nodes || graphData.nodes.length === 0) {
-                showError('No workflows found in .bubble file');
-                return;
-            }
-
-            // Clear previous
-            nodesContainer.innerHTML = '';
-            svg.selectAll('*').remove();
-
-            // Create node elements
-            createNodes();
-            
-            // Draw edges
-            drawEdges();
-            
-            // Apply force simulation
-            initializeForceLayout();
-            
-            // Update status
-            updateStatus();
-            
-            // Setup interactions
-            setupInteractions();
-
-            console.log('✅ Visualization initialized');
-        }
-
-        function createNodes() {
-            const centerX = window.innerWidth / 2;
-            const centerY = window.innerHeight / 2;
-
-            graphData.nodes.forEach((nodeData, index) => {
-                const node = document.createElement('div');
-                node.className = 'node';
-                node.id = `node-${nodeData.id}`;
-                
-                // Determine node type
-                const isAPI = nodeData.data?.type === 'API_WORKFLOW';
-                const isHotspot = nodeData.data?.is_hotspot;
-                
-                if (isHotspot) {
-                    if (nodeData.data?.hotspot_score >= 4) {
-                        node.classList.add('hotspot-high');
-                    } else {
-                        node.classList.add('hotspot');
-                    }
-                }
-
-                const label = resolveLabel(nodeData);
-                const actionCount = nodeData.data?.action_count || 0;
-                const eventType = nodeData.data?.event || 'Unknown';
-
-                node.innerHTML = `
-                    <div class="node-header">
-                        <div class="node-label">${escapeHtml(label)}</div>
-                        <div class="node-type ${isAPI ? 'api' : 'page'}">${isAPI ? 'API' : 'PAGE'}</div>
-                    </div>
-                    <div class="node-detail">EVENT: ${eventType}</div>
-                    <div class="node-detail">ACTIONS: ${actionCount}</div>
-                    ${isHotspot ? `<div class="node-detail" style="color: var(--neon-orange);">⚠ HOTSPOT</div>` : ''}
-                `;
-
-                // Store initial position - distribute around center
-                const angle = (index / graphData.nodes.length) * Math.PI * 2;
-                const distance = 300;
-                const x = centerX + Math.cos(angle) * distance - 110; // 110 = half node width
-                const y = centerY + Math.sin(angle) * distance - 50; // 50 = rough half node height
-
-                node.dataset.id = nodeData.id;
-                node.dataset.x = x;
-                node.dataset.y = y;
-
-                // Position
-                node.style.left = x + 'px';
-                node.style.top = y + 'px';
-
-                // Click handler
-                node.addEventListener('click', () => selectNode(nodeData));
-
-                nodesContainer.appendChild(node);
-                nodeElements.push({ element: node, data: nodeData });
+        // Grid layout
+        const grid = [];
+        let col = 0, row = 0;
+        pageIds.forEach(pid => {
+            if (col >= COLS) { col = 0; row++; }
+            if (!grid[row]) grid[row] = [];
+            grid[row].push({
+                pid,
+                wfs: pageMap[pid],
+                w: NODE_W + PAGE_PAD * 2,
+                h: PAGE_PAD_TOP + (pageMap[pid].length * (NODE_H + NODE_GAP)) + PAGE_PAD
             });
+            col++;
+        });
 
-            console.log(`✅ Created ${nodeElements.length} node elements`);
-        }
-
-        function drawEdges() {
-            if (!graphData.edges || graphData.edges.length === 0) {
-                console.log('ℹ️  No edges to draw');
-                return;
-            }
-
-            graphData.edges.forEach((edge, index) => {
-                const sourceNode = nodeElements.find(n => n.data.id === edge.source);
-                const targetNode = nodeElements.find(n => n.data.id === edge.target);
-
-                if (!sourceNode || !targetNode) return;
-
-                // Create curved path
-                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                
-                const x1 = parseFloat(sourceNode.element.dataset.x) + 220;
-                const y1 = parseFloat(sourceNode.element.dataset.y) + 35;
-                const x2 = parseFloat(targetNode.element.dataset.x);
-                const y2 = parseFloat(targetNode.element.dataset.y) + 35;
-                
-                const dx = (x2 - x1) * 0.25;
-                path.setAttribute('d', `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`);
-                path.setAttribute('class', 'edge');
-                
-                svg.node().appendChild(path);
+        pages = [];
+        let yOff = 60;
+        grid.forEach(rowItems => {
+            let xOff = 60, tallest = 0;
+            rowItems.forEach(ps => {
+                pages.push({ id: ps.pid, name: ps.pid, workflows: ps.wfs, x: xOff, y: yOff, w: ps.w, h: ps.h });
+                xOff += ps.w + COL_GAP;
+                tallest = Math.max(tallest, ps.h);
             });
+            yOff += tallest + ROW_GAP;
+        });
 
-            console.log(`✅ Drew ${graphData.edges.length} edges`);
-        }
-
-        function resolveLabel(nodeData) {
-            return nodeData.data?.label || 
-                   nodeData.data?.name ||
-                   nodeData.data?.event ||
-                   nodeData.id;
-        }
-
-        function escapeHtml(text) {
-            const map = {
-                '&': '&amp;',
-                '<': '&lt;',
-                '>': '&gt;',
-                '"': '&quot;',
-                "'": '&#039;'
+        if (apiWorkflows.length > 0) {
+            apiGroup = {
+                id: '_api', name: 'BACKEND / API',
+                workflows: apiWorkflows, x: 60, y: yOff,
+                w: NODE_W + PAGE_PAD * 2,
+                h: PAGE_PAD_TOP + (apiWorkflows.length * (NODE_H + NODE_GAP)) + PAGE_PAD
             };
-            return text.replace(/[&<>"']/g, m => map[m]);
         }
 
-        function initializeForceLayout() {
-            // Prepare nodes for D3 simulation
-            const simulationNodes = nodeElements.map((n, i) => ({
-                id: n.data.id,
-                x: parseFloat(n.element.dataset.x),
-                y: parseFloat(n.element.dataset.y),
-                element: n.element,
-                data: n.data
-            }));
+        renderGroups();
+        updateStatus();
+        setupPanZoom();
+        setupToolbar();
+        fitView();
 
-            // Prepare links with proper index references
-            const links = (graphData.edges || []).map(edge => ({
-                source: simulationNodes.findIndex(n => n.id === edge.source),
-                target: simulationNodes.findIndex(n => n.id === edge.target),
-                type: edge.type
-            })).filter(link => link.source >= 0 && link.target >= 0);
+        // Render edges after layout settles
+        setTimeout(() => renderEdges(edges), 100);
+    }
 
-            simulation = d3.forceSimulation(simulationNodes)
-                .force('charge', d3.forceManyBody().strength(-300))
-                .force('link', d3.forceLink(links).distance(250).strength(0.5))
-                .force('center', d3.forceCenter(window.innerWidth / 2, window.innerHeight / 2))
-                .force('collide', d3.forceCollide().radius(160))
-                .on('tick', () => {
-                    simulationNodes.forEach((node) => {
-                        node.element.style.left = Math.max(0, Math.min(window.innerWidth - 220, node.x)) + 'px';
-                        node.element.style.top = Math.max(0, Math.min(window.innerHeight - 100, node.y)) + 'px';
-                        node.element.dataset.x = node.x;
-                        node.element.dataset.y = node.y;
-                    });
-                    
-                    updateEdges();
-                })
-                .alpha(1)
-                .alphaDecay(0.02);
+    function renderGroups() {
+        world.querySelectorAll('.page-group, .api-group').forEach(el => el.remove());
+        const all = [...pages];
+        if (apiGroup) all.push(apiGroup);
 
-            // Stop after convergence
-            setTimeout(() => {
-                if (simulation) simulation.stop();
-                console.log('✅ Force simulation converged');
-            }, 4000);
+        all.forEach(pg => {
+            const isApi = pg.id === '_api';
+            const g = document.createElement('div');
+            g.className = isApi ? 'api-group' : 'page-group';
+            g.style.cssText = 'left:' + pg.x + 'px;top:' + pg.y + 'px;width:' + pg.w + 'px;min-height:' + pg.h + 'px;';
+            g.innerHTML = '<div class="page-group-header"><div class="page-group-title">' +
+                (isApi ? '⚡ BACKEND / API' : '📄 ' + pg.name.toUpperCase()) +
+                '</div><div class="page-group-badge">' + pg.workflows.length + ' WF</div></div>';
 
-            console.log('✅ Force simulation started');
-        }
+            pg.workflows.forEach(wf => {
+                const d = wf.data || {};
+                const label = d.label || d.event || wf.id;
+                const isHot = d.is_hotspot;
+                const cls = 'wf-node' + (isHot ? (d.hotspot_score >= 4 ? ' hotspot-high' : ' hotspot') : '');
 
-        function updateEdges() {
-            svg.selectAll('.edge').each(function(d, i) {
-                const edge = graphData.edges[i];
-                if (!edge) return;
-
-                const sourceNode = nodeElements.find(n => n.data.id === edge.source);
-                const targetNode = nodeElements.find(n => n.data.id === edge.target);
-                
-                if (!sourceNode || !targetNode) return;
-
-                const x1 = parseFloat(sourceNode.element.dataset.x) + 220;
-                const y1 = parseFloat(sourceNode.element.dataset.y) + 35;
-                const x2 = parseFloat(targetNode.element.dataset.x);
-                const y2 = parseFloat(targetNode.element.dataset.y) + 35;
-                
-                const dx = (x2 - x1) * 0.25;
-                this.setAttribute('d', `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`);
+                const n = document.createElement('div');
+                n.className = cls;
+                n.id = 'wf-' + wf.id;
+                n.dataset.wfId = wf.id;
+                n.innerHTML =
+                    '<div class="wf-node-header">' +
+                        '<div class="wf-node-name">' + esc(label) + '</div>' +
+                        '<div class="wf-node-tag ' + tagClass(d.event) + '">' + tagLabel(d.event) + '</div>' +
+                    '</div>' +
+                    '<div class="wf-node-meta">' + (d.action_count || 0) + ' actions' + (isHot ? ' · ⚠ hotspot' : '') + '</div>' +
+                    '<div class="conn-dot left"></div><div class="conn-dot right"></div>';
+                n.addEventListener('click', (ev) => { ev.stopPropagation(); selectWf(wf); });
+                g.appendChild(n);
             });
-        }
+            world.appendChild(g);
+        });
+    }
 
-        function selectNode(nodeData) {
-            // Deselect previous
-            if (selectedNode) {
-                document.getElementById(`node-${selectedNode.id}`)?.classList.remove('selected');
+    function renderEdges(edges) {
+        edgeSvg.querySelectorAll('.edge-path').forEach(el => el.remove());
+        edgeData = edges;
+
+        edges.forEach(edge => {
+            const sEl = document.getElementById('wf-' + edge.source);
+            const tEl = document.getElementById('wf-' + edge.target);
+            if (!sEl || !tEl) return;
+
+            const wRect = world.getBoundingClientRect();
+            const sR = sEl.getBoundingClientRect();
+            const tR = tEl.getBoundingClientRect();
+
+            const x1 = (sR.right - wRect.left) / scale;
+            const y1 = (sR.top + sR.height / 2 - wRect.top) / scale;
+            const x2 = (tR.left - wRect.left) / scale;
+            const y2 = (tR.top + tR.height / 2 - wRect.top) / scale;
+            const dx = Math.abs(x2 - x1) * 0.4;
+
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('d', 'M ' + x1 + ' ' + y1 + ' C ' + (x1+dx) + ' ' + y1 + ', ' + (x2-dx) + ' ' + y2 + ', ' + x2 + ' ' + y2);
+            path.setAttribute('class', 'edge-path type-' + (edge.type || 'default'));
+            path.setAttribute('marker-end', 'url(#arrowhead)');
+            path.dataset.source = edge.source;
+            path.dataset.target = edge.target;
+            edgeSvg.appendChild(path);
+        });
+        console.log('✅ Rendered ' + edges.length + ' edges');
+    }
+
+    function selectWf(wf) {
+        document.querySelectorAll('.wf-node.selected').forEach(el => el.classList.remove('selected'));
+        selectedId = wf.id;
+        const el = document.getElementById('wf-' + wf.id);
+        if (el) el.classList.add('selected');
+        highlightEdges(wf.id);
+        updateSidebar(wf);
+    }
+
+    function highlightEdges(id) {
+        document.querySelectorAll('.edge-path').forEach(p => {
+            if (p.dataset.source === id || p.dataset.target === id) {
+                p.classList.add('highlighted'); p.classList.remove('dimmed');
+            } else {
+                p.classList.remove('highlighted'); p.classList.add('dimmed');
             }
+        });
+    }
 
-            selectedNode = nodeData;
-            document.getElementById(`node-${nodeData.id}`).classList.add('selected');
+    function clearHighlights() {
+        document.querySelectorAll('.edge-path').forEach(p => p.classList.remove('highlighted', 'dimmed'));
+    }
 
-            // Update sidebar
-            updateSidebar(nodeData);
+    function updateSidebar(wf) {
+        const sb = document.getElementById('sidebar');
+        const d = wf.data || {};
+        const isAPI = d.type === 'API_WORKFLOW';
+        const label = d.label || wf.id;
+        const up = edgeData.filter(e => e.target === wf.id);
+        const down = edgeData.filter(e => e.source === wf.id);
+
+        let html = '<div class="sidebar-title">WORKFLOW INSPECTOR</div>';
+        html += field('Name', esc(label));
+        html += '<div class="sidebar-field"><div class="sidebar-label">Type</div><div class="wf-node-tag ' + (isAPI ? 'event-api' : 'event-click') + '" style="display:inline-block;font-size:9px;padding:3px 8px;">' + (isAPI ? 'API / BACKEND' : 'PAGE WORKFLOW') + '</div></div>';
+        if (d.page) html += field('Page', d.page);
+        html += field('Event', d.event || 'Unknown');
+        html += field('Actions', d.action_count || 0);
+
+        if (d.is_hotspot) {
+            html += '<div style="background:rgba(210,153,34,0.08);border:1px solid rgba(210,153,34,0.3);border-radius:4px;padding:10px;margin:8px 0;"><div style="color:var(--neon-orange);font-weight:700;margin-bottom:4px;">⚠ COMPLEXITY HOTSPOT</div><div style="font-size:9px;color:var(--text-secondary);">Score: ' + d.hotspot_score + '</div></div>';
         }
 
-        function updateSidebar(nodeData) {
-            const sidebar = document.getElementById('sidebar');
-            const isAPI = nodeData.data?.type === 'API_WORKFLOW';
+        html += '<hr class="sidebar-divider">';
+        html += '<div class="sidebar-field"><div class="sidebar-label">Upstream (' + up.length + ' triggers this)</div>';
+        if (up.length) {
+            html += '<ul class="sidebar-list">' + up.map(e => {
+                const src = graphData.graph.nodes.find(n => n.id === e.source);
+                return '<li>' + esc(src?.data?.label || e.source) + '</li>';
+            }).join('') + '</ul>';
+        } else { html += '<div style="color:var(--text-dim);font-size:9px;">None</div>'; }
+        html += '</div>';
 
-            sidebar.innerHTML = `
-                <div class="sidebar-section">
-                    <span class="sidebar-label">WORKFLOW_NAME</span>
-                    <div class="sidebar-value">${escapeHtml(resolveLabel(nodeData))}</div>
-                </div>
+        html += '<div class="sidebar-field"><div class="sidebar-label">Downstream (triggers ' + down.length + ')</div>';
+        if (down.length) {
+            html += '<ul class="sidebar-list">' + down.map(e => {
+                const tgt = graphData.graph.nodes.find(n => n.id === e.target);
+                return '<li>' + esc(tgt?.data?.label || e.target) + '</li>';
+            }).join('') + '</ul>';
+        } else { html += '<div style="color:var(--text-dim);font-size:9px;">None</div>'; }
+        html += '</div>';
 
-                <div class="sidebar-section">
-                    <span class="sidebar-label">TYPE</span>
-                    <div class="sidebar-value">${isAPI ? 'API_WORKFLOW' : 'PAGE_WORKFLOW'}</div>
-                </div>
-
-                ${nodeData.data?.page ? `
-                    <div class="sidebar-section">
-                        <span class="sidebar-label">PAGE</span>
-                        <div class="sidebar-value">${nodeData.data.page}</div>
-                    </div>
-                ` : ''}
-
-                <div class="sidebar-section">
-                    <span class="sidebar-label">EVENT</span>
-                    <div class="sidebar-value">${nodeData.data?.event || 'Unknown'}</div>
-                </div>
-
-                <div class="sidebar-section">
-                    <span class="sidebar-label">ACTIONS</span>
-                    <div class="sidebar-value">${nodeData.data?.action_count || 0}</div>
-                </div>
-
-                ${nodeData.data?.is_hotspot ? `
-                    <div class="stat-box" style="color: var(--neon-orange); border-color: var(--neon-orange);">
-                        ⚠ HIGH_COMPLEXITY_HOTSPOT
-                        <br>SCORE: ${nodeData.data?.hotspot_score || 'N/A'}
-                    </div>
-                ` : ''}
-
-                ${nodeData.data?.db_ops && nodeData.data.db_ops.length > 0 ? `
-                    <div class="sidebar-section">
-                        <span class="sidebar-label">DATABASE_OPS</span>
-                        <ul class="stat-list">
-                            ${nodeData.data.db_ops.map(op => `<li>• ${op}</li>`).join('')}
-                        </ul>
-                    </div>
-                ` : ''}
-
-                ${nodeData.data?.api_calls && nodeData.data.api_calls.length > 0 ? `
-                    <div class="sidebar-section">
-                        <span class="sidebar-label">API_CALLS</span>
-                        <ul class="stat-list">
-                            ${nodeData.data.api_calls.map(call => `<li>• ${call}</li>`).join('')}
-                        </ul>
-                    </div>
-                ` : ''}
-            `;
+        if (down.length > 0) {
+            html += '<div class="break-risk"><div style="color:var(--neon-red);font-weight:700;margin-bottom:4px;">BREAK RISK</div><div style="font-size:9px;color:var(--text-secondary);">Deleting this may break <span style="color:var(--text-primary)">' + down.length + ' downstream workflow' + (down.length > 1 ? 's' : '') + '</span>.</div></div>';
         }
 
-        function updateStatus() {
-            const status = document.getElementById('status');
-            const hotspotCount = graphData.nodes.filter(n => n.data?.is_hotspot).length;
-            
-            status.innerHTML = `
-                NODES: <span style="color: var(--neon-blue); font-weight: bold;">${graphData.nodes.length}</span> 
-                | EDGES: <span style="color: var(--neon-blue); font-weight: bold;">${(graphData.edges || []).length}</span> 
-                | HOTSPOTS: <span style="color: var(--neon-orange); font-weight: bold;">${hotspotCount}</span>
-            `;
+        if (d.db_ops?.length) {
+            html += '<hr class="sidebar-divider">';
+            html += '<div class="sidebar-field"><div class="sidebar-label">Database ops</div><ul class="sidebar-list">' + d.db_ops.map(o => '<li>' + o + '</li>').join('') + '</ul></div>';
+        }
+        if (d.api_calls?.length) {
+            html += '<div class="sidebar-field"><div class="sidebar-label">API calls</div><ul class="sidebar-list">' + d.api_calls.map(c => '<li>' + c + '</li>').join('') + '</ul></div>';
         }
 
-        function setupInteractions() {
-            // Zoom with mouse wheel
-            canvasWrapper.addEventListener('wheel', (e) => {
-                e.preventDefault();
-                const zoom = e.deltaY > 0 ? 0.9 : 1.1;
-                scale *= zoom;
-                scale = Math.max(0.5, Math.min(3, scale));
-                canvasWrapper.style.transform = `scale(${scale})`;
-                canvasWrapper.style.transformOrigin = '0 0';
-                document.getElementById('btn-zoom').textContent = `ZOOM: ${Math.round(scale * 100)}%`;
-            });
+        sb.innerHTML = html;
+    }
 
-            // Button handlers
-            document.getElementById('btn-fit').addEventListener('click', () => {
-                scale = 1;
-                tx = 0;
-                ty = 0;
-                canvasWrapper.style.transform = 'none';
-                document.getElementById('btn-zoom').textContent = 'ZOOM: 100%';
-            });
+    function field(label, value) {
+        return '<div class="sidebar-field"><div class="sidebar-label">' + label + '</div><div class="sidebar-value">' + value + '</div></div>';
+    }
 
-            document.getElementById('btn-hotspots').addEventListener('click', (e) => {
-                e.target.classList.toggle('active');
-            });
+    // Pan / Zoom
+    function setupPanZoom() {
+        let panning = false, sx, sy;
+        viewport.addEventListener('pointerdown', (e) => {
+            if (e.target.closest('.wf-node') || e.target.closest('.overlay-panel')) return;
+            panning = true; sx = e.clientX - tx; sy = e.clientY - ty;
+            viewport.setPointerCapture(e.pointerId);
+        });
+        viewport.addEventListener('pointermove', (e) => {
+            if (!panning) return;
+            tx = e.clientX - sx; ty = e.clientY - sy;
+            applyTx();
+        });
+        viewport.addEventListener('pointerup', () => { panning = false; });
+        viewport.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const f = e.deltaY > 0 ? 0.92 : 1.08;
+            const r = viewport.getBoundingClientRect();
+            const mx = e.clientX - r.left, my = e.clientY - r.top;
+            tx = mx - (mx - tx) * f;
+            ty = my - (my - ty) * f;
+            scale *= f;
+            scale = Math.max(0.1, Math.min(3, scale));
+            applyTx();
+            document.getElementById('btn-zoom-label').textContent = Math.round(scale * 100) + '%';
+        }, { passive: false });
 
-            document.getElementById('btn-reset').addEventListener('click', () => {
-                selectedNode = null;
-                nodeElements.forEach(n => n.element.classList.remove('selected'));
-                document.getElementById('sidebar').innerHTML = '<div style="text-align: center; color: var(--text-dim);">SELECT A WORKFLOW</div>';
-            });
-        }
+        viewport.addEventListener('click', (e) => {
+            if (!e.target.closest('.wf-node')) {
+                selectedId = null;
+                document.querySelectorAll('.wf-node.selected').forEach(el => el.classList.remove('selected'));
+                clearHighlights();
+                document.getElementById('sidebar').innerHTML = '<div class="sidebar-title">SELECT A WORKFLOW</div><div style="color:var(--text-dim);font-size:10px;">Click any workflow card to inspect.</div>';
+            }
+        });
+    }
 
-    </script>
+    function applyTx() { world.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')'; }
+
+    function fitView() {
+        const all = [...pages]; if (apiGroup) all.push(apiGroup);
+        if (!all.length) return;
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        all.forEach(g => {
+            minX = Math.min(minX, g.x); minY = Math.min(minY, g.y);
+            maxX = Math.max(maxX, g.x + g.w); maxY = Math.max(maxY, g.y + g.h);
+        });
+        const cw = maxX - minX, ch = maxY - minY;
+        const vw = viewport.clientWidth - 350, vh = viewport.clientHeight - 80;
+        scale = Math.min(vw / cw, vh / ch, 1) * 0.85;
+        tx = (vw / 2) - ((minX + cw / 2) * scale) + 20;
+        ty = (vh / 2) - ((minY + ch / 2) * scale) + 50;
+        applyTx();
+        document.getElementById('btn-zoom-label').textContent = Math.round(scale * 100) + '%';
+        setTimeout(() => renderEdges(graphData.graph.edges || []), 80);
+    }
+
+    function setupToolbar() {
+        document.getElementById('btn-fit').addEventListener('click', fitView);
+        document.querySelectorAll('[data-mode]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('[data-mode]').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            });
+        });
+    }
+
+    function updateStatus() {
+        const n = graphData.graph.nodes, e = graphData.graph.edges || [];
+        const h = n.filter(x => x.data?.is_hotspot).length;
+        document.getElementById('status').innerHTML =
+            'PAGES: <span>' + pages.length + '</span> | WORKFLOWS: <span>' + n.length + '</span> | EDGES: <span>' + e.length + '</span> | HOTSPOTS: <span style="color:var(--neon-orange)">' + h + '</span>';
+    }
+
+    function esc(t) { return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    function tagClass(ev) {
+        const e = (ev||'').toLowerCase();
+        if (e.includes('click')) return 'event-click';
+        if (e.includes('pageload') || e.includes('page is loaded')) return 'event-page';
+        if (e.includes('input') || e.includes('change')) return 'event-input';
+        if (e.includes('condition')) return 'event-condition';
+        if (e.includes('logout')) return 'event-logout';
+        if (e.includes('api')) return 'event-api';
+        return 'event-default';
+    }
+    function tagLabel(ev) {
+        const e = (ev||'').toLowerCase();
+        if (e.includes('click')) return 'CLICK';
+        if (e.includes('pageload') || e.includes('page is loaded')) return 'LOAD';
+        if (e.includes('input') || e.includes('change')) return 'INPUT';
+        if (e.includes('condition')) return 'COND';
+        if (e.includes('logout')) return 'LOGOUT';
+        if (e.includes('api')) return 'API';
+        return 'EVENT';
+    }
+})();
+</script>
 </body>
 </html>
