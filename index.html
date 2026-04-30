@@ -1,426 +1,729 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>CNCA Neural Map (Canvas Engine)</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CNCA Neural Map - Workflow Visualization</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-deep: #080a0f;
+            --panel-bg: #0d1117;
+            --border-muted: #21262d;
+            --neon-green: #3fb950;
+            --neon-blue: #2f81f7;
+            --neon-orange: #d29922;
+            --neon-red: #f85149;
+            --text-dim: #8b949e;
+        }
 
-  <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      background: #0b0e14;
-      font-family: monospace;
-    }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-    canvas {
-      display: block;
-    }
+        body {
+            background-color: var(--bg-deep);
+            color: #c9d1d9;
+            font-family: 'JetBrains Mono', monospace;
+            overflow: hidden;
+            height: 100vh;
+            text-transform: uppercase;
+            font-size: 11px;
+            letter-spacing: 0.05em;
+        }
 
-    #panel {
-      position: absolute;
-      right: 0;
-      top: 0;
-      width: 260px;
-      height: 100%;
-      background: #0f172a;
-      color: white;
-      padding: 12px;
-      font-size: 12px;
-      overflow: auto;
-      border-left: 1px solid #1e293b;
-    }
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                radial-gradient(circle, #161b22 1px, transparent 1px);
+            background-size: 30px 30px;
+            background-color: var(--bg-deep);
+        }
 
-    #loading {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      color: #475569;
-    }
-  </style>
+        /* Node styling */
+        .node {
+            background: var(--panel-bg);
+            border: 1px solid var(--border-muted);
+            padding: 12px;
+            width: 220px;
+            position: absolute;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            transition: all 0.2s;
+            cursor: pointer;
+            z-index: 10;
+        }
+
+        .node:hover {
+            border-color: var(--text-dim);
+            box-shadow: 0 10px 40px rgba(47, 129, 247, 0.2);
+        }
+
+        .node.selected {
+            border-color: var(--neon-blue);
+            box-shadow: 0 0 20px rgba(47, 129, 247, 0.4);
+        }
+
+        .node.hotspot {
+            border-color: var(--neon-orange);
+        }
+
+        .node.hotspot-high {
+            border-color: var(--neon-red);
+        }
+
+        .node-header {
+            border-bottom: 1px solid var(--border-muted);
+            padding-bottom: 6px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 8px;
+        }
+
+        .node-label {
+            color: #fff;
+            font-weight: bold;
+            font-size: 12px;
+            flex: 1;
+            word-break: break-word;
+            line-height: 1.2;
+        }
+
+        .node-type {
+            font-size: 8px;
+            color: var(--text-dim);
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .node-type.api {
+            color: var(--neon-green);
+        }
+
+        .node-type.page {
+            color: var(--neon-blue);
+        }
+
+        .node-detail {
+            font-size: 9px;
+            color: var(--text-dim);
+            margin-bottom: 6px;
+            line-height: 1.3;
+        }
+
+        .connector-dot {
+            width: 6px;
+            height: 6px;
+            background: var(--border-muted);
+            border-radius: 50%;
+            position: absolute;
+            transition: background 0.2s;
+        }
+
+        .dot-left { left: -4px; top: 50%; transform: translateY(-50%); }
+        .dot-right { right: -4px; top: 50%; transform: translateY(-50%); }
+
+        .node.selected .connector-dot {
+            background: var(--neon-blue);
+        }
+
+        /* SVG for connections */
+        #connection-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        .edge {
+            stroke: var(--neon-blue);
+            stroke-width: 1.5;
+            fill: none;
+            stroke-dasharray: 5;
+            animation: dash 20s linear infinite;
+            opacity: 0.6;
+        }
+
+        .edge.hotspot {
+            stroke: var(--neon-orange);
+            stroke-width: 2;
+            opacity: 0.8;
+        }
+
+        .edge.hotspot-high {
+            stroke: var(--neon-red);
+            stroke-width: 2;
+            filter: drop-shadow(0 0 2px var(--neon-red));
+        }
+
+        @keyframes dash {
+            to { stroke-dashoffset: -1000; }
+        }
+
+        /* UI Overlays */
+        .overlay-panel {
+            position: absolute;
+            background: rgba(13, 17, 23, 0.95);
+            border: 1px solid var(--border-muted);
+            backdrop-filter: blur(8px);
+            z-index: 100;
+        }
+
+        .toolbar {
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            padding: 8px 16px;
+            border-radius: 4px;
+        }
+
+        .sidebar-right {
+            top: 20px;
+            right: 20px;
+            width: 300px;
+            max-height: calc(100vh - 40px);
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .status-footer {
+            bottom: 20px;
+            left: 20px;
+            padding: 8px 12px;
+        }
+
+        .btn-util {
+            padding: 6px 12px;
+            border: 1px solid var(--border-muted);
+            background: #161b22;
+            color: #c9d1d9;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: inherit;
+            text-transform: uppercase;
+            transition: all 0.2s;
+        }
+
+        .btn-util:hover {
+            background: #21262d;
+            border-color: var(--text-dim);
+        }
+
+        .btn-util.active {
+            border-color: var(--neon-blue);
+            color: var(--neon-blue);
+        }
+
+        /* Sidebar content */
+        .sidebar-section {
+            margin-bottom: 20px;
+        }
+
+        .sidebar-label {
+            color: var(--text-dim);
+            font-size: 9px;
+            margin-bottom: 4px;
+            display: block;
+        }
+
+        .sidebar-value {
+            color: #fff;
+            font-weight: bold;
+            font-size: 11px;
+        }
+
+        .stat-box {
+            background: rgba(0,0,0,0.4);
+            border: 1px solid #21262d;
+            padding: 8px;
+            margin: 8px 0;
+            font-size: 9px;
+            line-height: 1.4;
+            border-radius: 4px;
+        }
+
+        .stat-box.danger {
+            border-color: var(--neon-red);
+            color: var(--neon-red);
+        }
+
+        .stat-box.warn {
+            border-color: var(--neon-orange);
+            color: var(--neon-orange);
+        }
+
+        .stat-list {
+            font-size: 9px;
+            line-height: 1.5;
+        }
+
+        .stat-list li {
+            list-style: none;
+            padding: 4px 0;
+            color: #c9d1d9;
+        }
+
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 200;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 2px solid var(--border-muted);
+            border-top-color: var(--neon-blue);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 12px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        #no-data {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 200;
+            color: var(--text-dim);
+        }
+    </style>
 </head>
 
 <body>
-  <div id="loading">Awaiting Neural Data...</div>
-  <div id="panel">No node selected</div>
-  <canvas id="canvas"></canvas>
 
-  <script>
-    const canvas = document.getElementById("canvas");
-    const ctx = canvas.getContext("2d");
+    <div id="canvas">
+        <svg id="connection-svg"></svg>
+        <div id="nodes-container"></div>
+    </div>
 
-    let nodes = [];
-    let edges = [];
+    <div id="loading" class="loading">
+        <div class="spinner"></div>
+        <div>INITIALIZING NEURAL MAP...</div>
+    </div>
 
-    let offsetX = 0;
-    let offsetY = 0;
-    let scale = 1;
+    <div id="no-data" style="display: none;">
+        <div style="font-size: 14px; margin-bottom: 8px;">NO DATA RECEIVED</div>
+        <div style="font-size: 11px;">Upload a .bubble file to visualize</div>
+    </div>
 
-    let draggingNode = null;
-    let dragOffsetX = 0;
-    let dragOffsetY = 0;
+    <!-- Toolbar -->
+    <div class="overlay-panel toolbar">
+        <button class="btn-util" id="btn-fit">FIT_VIEW</button>
+        <button class="btn-util" id="btn-hotspots">SHOW_HOTSPOTS</button>
+        <button class="btn-util" id="btn-reset">RESET</button>
+        <div style="width: 1px; background: #21262d; margin: 0 10px;"></div>
+        <button class="btn-util" id="btn-zoom">ZOOM: 100%</button>
+    </div>
 
-    let isPanning = false;
-    let lastMouse = { x: 0, y: 0 };
+    <!-- Sidebar -->
+    <div class="overlay-panel sidebar-right" id="sidebar">
+        <div style="text-align: center; color: var(--text-dim);">SELECT A WORKFLOW</div>
+    </div>
 
-    function resize() {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-      draw();
-    }
-    window.addEventListener("resize", resize);
-    resize();
+    <!-- Status Footer -->
+    <div class="overlay-panel status-footer" id="status">
+        INITIALIZING...
+    </div>
 
-    function autoLayout(nodes, edges) {
-      const result = [];
+    <script>
+        // Global state
+        let graphData = null;
+        let nodeElements = [];
+        let selectedNode = null;
+        let scale = 1;
+        let tx = 0;
+        let ty = 0;
 
-      nodes.forEach((n, i) => {
-        console.log("NODE SAMPLE:", n);
+        // Canvas setup
+        const canvas = document.getElementById('canvas');
+        const svg = d3.select('#connection-svg');
+        const nodesContainer = document.getElementById('nodes-container');
 
-        result.push({
-          ...n,
-          x: (i % 10) * 180,
-          y: Math.floor(i / 10) * 120,
-          width: 160,
-          height: 50
+        // Listen for graph data from postMessage
+        window.addEventListener('message', (event) => {
+            try {
+                let payload = event.data;
+
+                // Handle array wrapping from Bubble
+                if (Array.isArray(payload)) {
+                    payload = payload[0];
+                }
+
+                // Check for errors
+                if (payload.error || payload.detail) {
+                    console.error('API Error:', payload.detail || payload.error);
+                    showError(payload.detail || 'Unknown error');
+                    return;
+                }
+
+                // Validate structure
+                if (!payload.graph || !payload.graph.nodes) {
+                    showError('Invalid graph data received');
+                    return;
+                }
+
+                graphData = payload.graph;
+                initializeVisualization();
+            } catch (e) {
+                console.error('Error processing graph:', e);
+                showError(e.message);
+            }
         });
-      });
 
-      return result;
-    }
-
-   window.addEventListener("message", (event) => {
-    const loading = document.getElementById("loading");
-    const panel = document.getElementById("panel");
-    
-    function showError(title, message) {
-        loading.style.display = "none";
-        panel.innerHTML = `
-            <div style="color:#ef4444;font-weight:bold;margin-bottom:8px;">${title}</div>
-            <div style="color:#f87171;font-size:11px;line-height:1.4;margin-bottom:12px;">
-                ${message}
-            </div>
-            <hr style="border:none;border-top:1px solid #334155;margin:8px 0">
-            <div style="color:#94a3b8;font-size:10px;">
-                <strong>Try:</strong>
-                <ul style="margin:4px 0;padding-left:16px">
-                    <li>Ensure .bubble file is valid</li>
-                    <li>Check file size (&lt;10MB)</li>
-                    <li>Reload page and try again</li>
-                </ul>
-            </div>
-        `;
-        console.error(`${title}: ${message}`);
-    }
-    
-    try {
-        let payload = event.data;
-        console.log("📩 Received message:", typeof payload);
-        
-        // Handle API error response
-        if (payload && payload.detail) {
-            return showError("❌ API Error", payload.detail);
+        function showError(message) {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('no-data').innerHTML = `
+                <div style="color: var(--neon-red); font-size: 14px; margin-bottom: 8px;">ERROR</div>
+                <div style="font-size: 11px; color: #c9d1d9;">${message}</div>
+            `;
+            document.getElementById('no-data').style.display = 'block';
         }
-        
-        // Parse if string
-        if (typeof payload === "string") {
-            try {
-                payload = JSON.parse(payload);
-            } catch (e) {
-                return showError(
-                    "❌ Invalid JSON",
-                    "Response from API could not be parsed as JSON"
-                );
+
+        function initializeVisualization() {
+            document.getElementById('loading').style.display = 'none';
+
+            if (!graphData.nodes || graphData.nodes.length === 0) {
+                showError('No workflows found in .bubble file');
+                return;
             }
+
+            // Clear previous
+            nodesContainer.innerHTML = '';
+            svg.selectAll('*').remove();
+
+            // Create node elements
+            createNodes();
+            
+            // Draw edges
+            drawEdges();
+            
+            // Apply force simulation
+            initializeForceLayout();
+            
+            // Update status
+            updateStatus();
+            
+            // Setup interactions
+            setupInteractions();
         }
-        
-        // Validate payload is object
-        if (!payload || typeof payload !== "object") {
-            return showError(
-                "❌ Invalid Response",
-                `Expected object, got ${typeof payload}`
-            );
+
+        function createNodes() {
+            graphData.nodes.forEach(nodeData => {
+                const node = document.createElement('div');
+                node.className = 'node';
+                node.id = `node-${nodeData.id}`;
+                
+                // Determine node type
+                const isAPI = nodeData.data?.type === 'API_WORKFLOW';
+                const isHotspot = nodeData.data?.is_hotspot;
+                
+                if (isHotspot) {
+                    if (nodeData.data?.hotspot_score >= 4) {
+                        node.classList.add('hotspot-high');
+                    } else {
+                        node.classList.add('hotspot');
+                    }
+                }
+
+                const label = resolveLabel(nodeData);
+                const actionCount = nodeData.data?.action_count || 0;
+                const eventType = nodeData.data?.event || 'Unknown';
+
+                node.innerHTML = `
+                    <div class="node-header">
+                        <div class="node-label">${escapeHtml(label)}</div>
+                        <div class="node-type ${isAPI ? 'api' : 'page'}">${isAPI ? 'API' : 'PAGE'}</div>
+                    </div>
+                    <div class="node-detail">EVENT: ${eventType}</div>
+                    <div class="node-detail">ACTIONS: ${actionCount}</div>
+                    ${isHotspot ? `<div class="node-detail" style="color: var(--neon-orange);">⚠ HOTSPOT</div>` : ''}
+                    <div class="connector-dot dot-left"></div>
+                    <div class="connector-dot dot-right"></div>
+                `;
+
+                // Store initial position
+                node.dataset.id = nodeData.id;
+                node.dataset.x = nodeData.position?.x || Math.random() * 800;
+                node.dataset.y = nodeData.position?.y || Math.random() * 600;
+
+                // Position
+                node.style.left = node.dataset.x + 'px';
+                node.style.top = node.dataset.y + 'px';
+
+                // Click handler
+                node.addEventListener('click', () => selectNode(nodeData));
+
+                nodesContainer.appendChild(node);
+                nodeElements.push({ element: node, data: nodeData });
+            });
         }
-        
-        // Extract graph
-        let graph = payload.graph;
-        
-        // Handle if graph is stringified JSON (shouldn't happen, but Bubble is weird)
-        if (typeof graph === "string") {
-            try {
-                graph = JSON.parse(graph);
-            } catch (e) {
-                return showError(
-                    "❌ Graph Parse Error",
-                    "Graph data inside payload could not be parsed"
-                );
+
+        function drawEdges() {
+            if (!graphData.edges || graphData.edges.length === 0) {
+                return;
             }
+
+            graphData.edges.forEach(edge => {
+                const sourceNode = nodeElements.find(n => n.data.id === edge.source);
+                const targetNode = nodeElements.find(n => n.data.id === edge.target);
+
+                if (!sourceNode || !targetNode) return;
+
+                // Create curved path
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                
+                const x1 = parseFloat(sourceNode.element.dataset.x) + 220;
+                const y1 = parseFloat(sourceNode.element.dataset.y) + 35;
+                const x2 = parseFloat(targetNode.element.dataset.x);
+                const y2 = parseFloat(targetNode.element.dataset.y) + 35;
+                
+                const dx = (x2 - x1) * 0.25;
+                path.setAttribute('d', `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`);
+                path.setAttribute('class', 'edge');
+                
+                svg.node().appendChild(path);
+                
+                // Store for animation updates
+                path.sourceNode = sourceNode;
+                path.targetNode = targetNode;
+            });
         }
-        
-        // Handle if graph is array (extract first element)
-        if (Array.isArray(graph)) {
-            if (graph.length === 0) {
-                return showError("❌ Empty Array", "Graph array is empty");
+
+        function resolveLabel(nodeData) {
+            return nodeData.data?.label || 
+                   nodeData.data?.name ||
+                   nodeData.data?.event ||
+                   nodeData.id;
+        }
+
+        function escapeHtml(text) {
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return text.replace(/[&<>"']/g, m => map[m]);
+        }
+
+        function initializeForceLayout() {
+            // Simple force simulation using D3
+            const simulation = d3.forceSimulation(nodeElements.map(n => ({
+                x: parseFloat(n.element.dataset.x),
+                y: parseFloat(n.element.dataset.y),
+                element: n.element,
+                data: n.data
+            })))
+                .force('charge', d3.forceManyBody().strength(-300))
+                .force('link', d3.forceLink()
+                    .links(graphData.edges || [])
+                    .source(d => nodeElements.find(n => n.data.id === d.source)?.data)
+                    .target(d => nodeElements.find(n => n.data.id === d.target)?.data)
+                    .distance(200))
+                .force('center', d3.forceCenter(window.innerWidth / 2, window.innerHeight / 2))
+                .force('collide', d3.forceCollide().radius(150))
+                .on('tick', () => {
+                    nodeElements.forEach((item, i) => {
+                        const node = simulation.nodes()[i];
+                        item.element.style.left = node.x + 'px';
+                        item.element.style.top = node.y + 'px';
+                        item.element.dataset.x = node.x;
+                        item.element.dataset.y = node.y;
+                    });
+                    
+                    updateEdges();
+                })
+                .alpha(0.8)
+                .alphaDecay(0.01);
+
+            // Stop after convergence
+            setTimeout(() => simulation.stop(), 5000);
+        }
+
+        function updateEdges() {
+            svg.selectAll('.edge').each(function() {
+                const path = this;
+                const x1 = parseFloat(path.sourceNode.element.dataset.x) + 220;
+                const y1 = parseFloat(path.sourceNode.element.dataset.y) + 35;
+                const x2 = parseFloat(path.targetNode.element.dataset.x);
+                const y2 = parseFloat(path.targetNode.element.dataset.y) + 35;
+                
+                const dx = (x2 - x1) * 0.25;
+                path.setAttribute('d', `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`);
+            });
+        }
+
+        function selectNode(nodeData) {
+            // Deselect previous
+            if (selectedNode) {
+                document.getElementById(`node-${selectedNode.id}`)?.classList.remove('selected');
             }
-            console.log("ℹ️  Graph is array, using first element");
-            graph = graph[0];
+
+            selectedNode = nodeData;
+            document.getElementById(`node-${nodeData.id}`).classList.add('selected');
+
+            // Update sidebar
+            updateSidebar(nodeData);
         }
-        
-        // Validate graph structure
-        if (!graph || typeof graph !== "object") {
-            return showError(
-                "❌ Invalid Graph",
-                `Expected object, got ${typeof graph}`
-            );
+
+        function updateSidebar(nodeData) {
+            const sidebar = document.getElementById('sidebar');
+            const isAPI = nodeData.data?.type === 'API_WORKFLOW';
+
+            sidebar.innerHTML = `
+                <div class="sidebar-section">
+                    <span class="sidebar-label">WORKFLOW_NAME</span>
+                    <div class="sidebar-value">${escapeHtml(resolveLabel(nodeData))}</div>
+                </div>
+
+                <div class="sidebar-section">
+                    <span class="sidebar-label">TYPE</span>
+                    <div class="sidebar-value">${isAPI ? 'API_WORKFLOW' : 'PAGE_WORKFLOW'}</div>
+                </div>
+
+                ${nodeData.data?.page ? `
+                    <div class="sidebar-section">
+                        <span class="sidebar-label">PAGE</span>
+                        <div class="sidebar-value">${nodeData.data.page}</div>
+                    </div>
+                ` : ''}
+
+                <div class="sidebar-section">
+                    <span class="sidebar-label">EVENT</span>
+                    <div class="sidebar-value">${nodeData.data?.event || 'Unknown'}</div>
+                </div>
+
+                <div class="sidebar-section">
+                    <span class="sidebar-label">ACTIONS</span>
+                    <div class="sidebar-value">${nodeData.data?.action_count || 0}</div>
+                </div>
+
+                ${nodeData.data?.is_hotspot ? `
+                    <div class="stat-box warn">
+                        ⚠ HIGH_COMPLEXITY_HOTSPOT
+                        <br>SCORE: ${nodeData.data?.hotspot_score || 'N/A'}
+                    </div>
+                ` : ''}
+
+                ${nodeData.data?.db_ops && nodeData.data.db_ops.length > 0 ? `
+                    <div class="sidebar-section">
+                        <span class="sidebar-label">DATABASE_OPS</span>
+                        <ul class="stat-list">
+                            ${nodeData.data.db_ops.map(op => `<li>• ${op}</li>`).join('')}
+                        </ul>
+                    </div>
+                ` : ''}
+
+                ${nodeData.data?.api_calls && nodeData.data.api_calls.length > 0 ? `
+                    <div class="sidebar-section">
+                        <span class="sidebar-label">API_CALLS</span>
+                        <ul class="stat-list">
+                            ${nodeData.data.api_calls.map(call => `<li>• ${call}</li>`).join('')}
+                        </ul>
+                    </div>
+                ` : ''}
+            `;
         }
-        
-        if (!Array.isArray(graph.nodes)) {
-            const keys = Object.keys(graph).join(", ");
-            return showError(
-                "❌ Missing Nodes",
-                `Graph missing 'nodes' array. Has: ${keys}`
-            );
+
+        function updateStatus() {
+            const status = document.getElementById('status');
+            const hotspotCount = graphData.nodes.filter(n => n.data?.is_hotspot).length;
+            
+            status.innerHTML = `
+                NODES: <span style="color: var(--neon-blue); font-weight: bold;">${graphData.nodes.length}</span> 
+                | EDGES: <span style="color: var(--neon-blue); font-weight: bold;">${(graphData.edges || []).length}</span> 
+                | HOTSPOTS: <span style="color: var(--neon-orange); font-weight: bold;">${hotspotCount}</span>
+            `;
         }
-        
-        if (graph.nodes.length === 0) {
-            return showError(
-                "⚠️ Empty Graph",
-                "The .bubble file has no workflows to visualize"
-            );
+
+        function setupInteractions() {
+            // Zoom with mouse wheel
+            canvas.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const zoom = e.deltaY > 0 ? 0.9 : 1.1;
+                scale *= zoom;
+                scale = Math.max(0.5, Math.min(3, scale));
+                canvas.style.transform = `scale(${scale})`;
+                document.getElementById('btn-zoom').textContent = `ZOOM: ${Math.round(scale * 100)}%`;
+            });
+
+            // Button handlers
+            document.getElementById('btn-fit').addEventListener('click', () => {
+                scale = 1;
+                tx = 0;
+                ty = 0;
+                canvas.style.transform = 'none';
+                document.getElementById('btn-zoom').textContent = 'ZOOM: 100%';
+            });
+
+            document.getElementById('btn-hotspots').addEventListener('click', (e) => {
+                e.target.classList.toggle('active');
+                // TODO: Implement hotspot filtering
+            });
+
+            document.getElementById('btn-reset').addEventListener('click', () => {
+                selectedNode = null;
+                nodeElements.forEach(n => n.element.classList.remove('selected'));
+                document.getElementById('sidebar').innerHTML = '<div style="text-align: center; color: var(--text-dim);">SELECT A WORKFLOW</div>';
+            });
         }
-        
-        // Success! Load the graph
-        console.log(`✅ Loading ${graph.nodes.length} nodes`);
-        
-        nodes = autoLayout(graph.nodes, graph.edges || []);
-        edges = graph.edges || [];
-        
-        loading.style.display = "none";
-        draw();
-        
-        // Show success state
-        panel.innerHTML = `
-            <div style="color:#10b981;font-weight:bold;margin-bottom:8px;">✓ Loaded Successfully</div>
-            <div style="color:#94a3b8;font-size:11px;margin-bottom:12px;">
-                <strong>${nodes.length}</strong> workflows<br>
-                <strong>${edges.length}</strong> connections
-            </div>
-            <hr style="border:none;border-top:1px solid #334155;margin:8px 0">
-            <div style="color:#94a3b8;font-size:10px;line-height:1.6;">
-                <strong>Controls:</strong>
-                <ul style="margin:4px 0;padding-left:16px">
-                    <li>Click nodes for details</li>
-                    <li>Drag nodes to move</li>
-                    <li>Scroll to zoom</li>
-                    <li>Press <code style="color:#d4d4d8">/</code> to search</li>
-                </ul>
-            </div>
-        `;
-        
-    } catch (e) {
-        showError(
-            "❌ Unexpected Error",
-            `${e.message}. Check browser console for details.`
-        );
-    }
-});
 
-    function screenToWorld(x, y) {
-      return {
-        x: (x - offsetX) / scale,
-        y: (y - offsetY) / scale
-      };
-    }
+        // Pan support
+        let panning = false;
+        let panStart = { x: 0, y: 0 };
 
-    function getNodeAt(x, y) {
-      const w = screenToWorld(x, y);
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.button === 2 || e.ctrlKey) { // Right click or Ctrl+click
+                panning = true;
+                panStart = { x: e.clientX, y: e.clientY };
+            }
+        });
 
-      return nodes.find(n =>
-        w.x >= n.x &&
-        w.x <= n.x + n.width &&
-        w.y >= n.y &&
-        w.y <= n.y + n.height
-      );
-    }
+        canvas.addEventListener('mousemove', (e) => {
+            if (panning) {
+                const dx = e.clientX - panStart.x;
+                const dy = e.clientY - panStart.y;
+                tx += dx;
+                ty += dy;
+                canvas.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+                panStart = { x: e.clientX, y: e.clientY };
+            }
+        });
 
-    function resolveLabel(n) {
-      return (
-        n.data?.name ||
-        n.data?.default_name ||
-        n.data?.element_name ||
-        n.data?.elementName ||
-        n.data?.custom_name ||
-        n.data?.label ||
-        (n.data?.event && n.data?.element_id
-          ? `${n.data.event} (${n.data.element_id})`
-          : n.data?.event) ||
-        n.id
-      );
-    }
+        canvas.addEventListener('mouseup', () => {
+            panning = false;
+        });
 
-    function draw() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // Support keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.key === '/') {
+                // TODO: Search functionality
+            }
+        });
 
-      ctx.save();
-      ctx.translate(offsetX, offsetY);
-      ctx.scale(scale, scale);
-
-      // edges
-      ctx.strokeStyle = "#3b82f6";
-      ctx.lineWidth = 2;
-
-      edges.forEach(e => {
-        const s = nodes.find(n => n.id === e.source);
-        const t = nodes.find(n => n.id === e.target);
-        if (!s || !t) return;
-
-        const midX = s.x + (t.x - s.x) * 0.5;
-
-        ctx.beginPath();
-        ctx.moveTo(s.x + 80, s.y + 25);
-        ctx.bezierCurveTo(
-          midX, s.y + 25,
-          midX, t.y + 25,
-          t.x + 80, t.y + 25
-        );
-        ctx.stroke();
-      });
-
-      // nodes
-      nodes.forEach(n => {
-        ctx.fillStyle = "#1e293b";
-        ctx.strokeStyle = "#334155";
-
-        ctx.fillRect(n.x, n.y, n.width, n.height);
-        ctx.strokeRect(n.x, n.y, n.width, n.height);
-
-        ctx.fillStyle = "#f8fafc";
-        ctx.font = "11px monospace";
-
-        const displayLabel = resolveLabel(n);
-
-        ctx.fillText(displayLabel, n.x + 10, n.y + 28);
-      });
-
-      ctx.restore();
-
-      drawMiniMap();
-    }
-
-    function drawMiniMap() {
-      const w = 200, h = 120;
-
-      ctx.save();
-      ctx.globalAlpha = 0.9;
-
-      ctx.fillStyle = "#0f172a";
-      ctx.fillRect(canvas.width - w - 10, canvas.height - h - 10, w, h);
-
-      const sx = w / 2000;
-      const sy = h / 2000;
-
-      ctx.fillStyle = "#3b82f6";
-
-      nodes.forEach(n => {
-        ctx.fillRect(
-          canvas.width - w - 10 + n.x * sx,
-          canvas.height - h - 10 + n.y * sy,
-          3, 3
-        );
-      });
-
-      ctx.restore();
-    }
-
-    canvas.addEventListener("mousedown", (e) => {
-      const node = getNodeAt(e.clientX, e.clientY);
-
-      if (node) {
-        draggingNode = node;
-
-        const w = screenToWorld(e.clientX, e.clientY);
-        dragOffsetX = w.x - node.x;
-        dragOffsetY = w.y - node.y;
-      } else {
-        isPanning = true;
-        lastMouse = { x: e.clientX, y: e.clientY };
-      }
-    });
-
-    canvas.addEventListener("mousemove", (e) => {
-      if (draggingNode) {
-        const w = screenToWorld(e.clientX, e.clientY);
-
-        draggingNode.x = w.x - dragOffsetX;
-        draggingNode.y = w.y - dragOffsetY;
-
-        draw();
-      }
-
-      if (isPanning) {
-        offsetX += e.clientX - lastMouse.x;
-        offsetY += e.clientY - lastMouse.y;
-
-        lastMouse = { x: e.clientX, y: e.clientY };
-
-        draw();
-      }
-    });
-
-    window.addEventListener("mouseup", () => {
-      draggingNode = null;
-      isPanning = false;
-    });
-
-    canvas.addEventListener("wheel", (e) => {
-      e.preventDefault();
-
-      const zoom = 0.001;
-      const delta = e.deltaY * -zoom;
-
-      const mouse = { x: e.clientX, y: e.clientY };
-      const w = screenToWorld(mouse.x, mouse.y);
-
-      scale += delta;
-      scale = Math.max(0.4, Math.min(2.5, scale));
-
-      offsetX = mouse.x - w.x * scale;
-      offsetY = mouse.y - w.y * scale;
-
-      draw();
-    }, { passive: false });
-
-    canvas.addEventListener("click", (e) => {
-      const node = getNodeAt(e.clientX, e.clientY);
-      if (!node) return;
-
-      document.getElementById("panel").innerHTML = `
-        <div style="font-weight:bold;margin-bottom:8px;">${node.id}</div>
-        <div style="opacity:0.8;margin-bottom:8px;">${resolveLabel(node)}</div>
-        <pre style="white-space:pre-wrap;color:#94a3b8">
-${JSON.stringify(node, null, 2)}
-        </pre>
-      `;
-    });
-
-    window.addEventListener("keydown", (e) => {
-      if (e.key !== "/") return;
-
-      const term = prompt("Search node:");
-      if (!term) return;
-
-      const match = nodes.find(n =>
-        resolveLabel(n).toLowerCase().includes(term.toLowerCase())
-      );
-
-      if (match) {
-        offsetX = -match.x * scale + window.innerWidth / 2;
-        offsetY = -match.y * scale + window.innerHeight / 2;
-        draw();
-      }
-    });
-
-    draw();
-  </script>
+    </script>
 </body>
 </html>
